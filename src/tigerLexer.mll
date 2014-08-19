@@ -15,20 +15,13 @@
 {
 open TigerParser
 
-let str_buf =
+let string_buf =
   Buffer.create 100
-
-let incr_linenum lexbuf =
-  let pos = lexbuf.Lexing.lex_curr_p in
-  lexbuf.Lexing.lex_curr_p <- { pos with
-    Lexing.pos_lnum = pos.Lexing.pos_lnum + 1;
-    Lexing.pos_bol = pos.Lexing.pos_cnum
-  }
 }
 
 rule token = parse
     [' ' '\t']     { token lexbuf }
-  | '\n'            { incr_linenum lexbuf; token lexbuf }
+  | '\n'            { Lexing.new_line lexbuf; token lexbuf }
   | eof                 { EOF }
   | "/*"                { comment 0 lexbuf }
   | "/"                 { DIV }
@@ -53,7 +46,7 @@ rule token = parse
   | "do"                { DO }
   | "for"               { FOR }
   | "to"                { TO }
-  | ['0'-'9']+ as lxm   { INT (int_of_string lxm) }
+  | ['0'-'9']+ { INT (int_of_string (Lexing.lexeme lexbuf)) } 
   | '+'                 { PLUS }
   | '-'                 { MINUS }
   | '*'                 { TIMES }
@@ -72,35 +65,38 @@ rule token = parse
   | ')'                 { RP }
   | '['                 { LB }
   | ']'                 { RB }
-  | '"'                 { str lexbuf }
-  | ['a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']* as lxm { IDENT lxm }
+  | '\"'
+      { Buffer.clear string_buf; string lexbuf }
+  | ['a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9''_']*
+      { IDENT (Lexing.lexeme lexbuf) }
 
 and comment level = parse
-  | "*/"          { if level == 0 then token lexbuf else comment (level - 1)
-  lexbuf }
-  | "/*"          { comment (level+1) lexbuf }
-  | '\n'          { incr_linenum lexbuf; comment level lexbuf }
+  | "*/"
+    { if level = 0 then token lexbuf else comment (level - 1) lexbuf }
+  | "/*"          { comment (level + 1) lexbuf }
+  | '\n'          { Lexing.new_line lexbuf; comment level lexbuf }
   | eof           { EOF }
   | _             { comment level lexbuf }
 
-and str = parse
-  | '"'           { let s = Buffer.contents str_buf in Buffer.clear
-  str_buf; STRING s }
-  | '\n'          { incr_linenum lexbuf; Buffer.add_char str_buf '\n'; str lexbuf }
-  | "\\n"         { Buffer.add_char str_buf '\n'; str lexbuf }
-  | "\\t"         { Buffer.add_char str_buf '\t'; str lexbuf }
-  | "\\\""        { Buffer.add_char str_buf '"'; str lexbuf }
+and string = parse
+  | '\"'
+      { STRING (Buffer.contents string_buf) }
+  | '\n'
+      { Lexing.new_line lexbuf; Buffer.add_char string_buf '\n';
+        string lexbuf }
+  | "\\n"         { Buffer.add_char string_buf '\n'; string lexbuf }
+  | "\\t"         { Buffer.add_char string_buf '\t'; string lexbuf }
+  | "\\\""        { Buffer.add_char string_buf '\"'; string lexbuf }
   | "\\" ((['0'-'9']['0'-'9']['0'-'9']) as lxm)
-                  { Buffer.add_char str_buf (char_of_int (int_of_string lxm));
-                  str lexbuf }
-  | "\\\\"          { Buffer.add_char str_buf '\\'; str lexbuf }
-  | '\\' [' ''\t' '\r']   { skip_whitespace lexbuf }
-  | '\\' '\n'     { incr_linenum lexbuf; skip_whitespace lexbuf }
+                  { Buffer.add_char string_buf (char_of_int (int_of_string lxm));
+                    string lexbuf }
+  | "\\\\"          { Buffer.add_char string_buf '\\'; string lexbuf }
+  | '\\' [' ' '\t' '\r']* '\n' { Lexing.new_line lexbuf; skip_whitespace lexbuf }
   | eof           { EOF }
-  | _ as c           { Buffer.add_char str_buf c; str lexbuf }
+  | _ as c           { Buffer.add_char string_buf c; string lexbuf }
 
 and skip_whitespace = parse
-  | '\\'          { str lexbuf }
-  | '\n'          { incr_linenum lexbuf; skip_whitespace lexbuf }
+  | '\n'          { Lexing.new_line lexbuf; skip_whitespace lexbuf }
   | [' ' '\t' '\r']  { skip_whitespace lexbuf }
   | eof           { EOF }
+  | _ as c { Buffer.add_char string_buf c; string lexbuf }
