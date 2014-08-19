@@ -51,14 +51,27 @@ let rec expr =
   | TSeqExp (e1, e2) ->
       E.sequence (expr e1) (expr e2)
   | TLetExp (id, init, mf, e) ->
-      let r, d =
+      let d =
         match mf with
           Mutable m when !m ->
-            Nonrecursive, [P.var (Location.mknoloc id), E.apply_nolabs (E.lid "ref") [expr init]]
+            [P.var (Location.mknoloc id), E.apply_nolabs (E.lid "ref") [expr init]]
         | _ ->
-            Nonrecursive, [P.var (Location.mknoloc id), expr init]
+            [P.var (Location.mknoloc id), expr init]
       in
-      E.let_ r d (expr e)
+      E.let_ Nonrecursive d (expr e)
+  | TLetRecExp (funs, e) ->
+      let makefun (id, args, e) =
+        let e = List.fold_right
+            (fun (a, m) e ->
+               let e = E.function_ "" None [P.var (Location.mknoloc a), e] in
+               match m with
+                 Typecheck.Mutable m when !m ->
+                   E.let_ Nonrecursive [P.var (Location.mknoloc a), E.apply_nolabs (E.lid "ref") [E.lid a]] e
+               | _ ->
+                   e) args (expr e) in
+        P.var (Location.mknoloc id), e
+      in
+      E.let_ Recursive (List.map makefun funs) (expr e)
   | TVarExp v ->
       var v
   | TAssignExp (TNameVar (name, _), e) ->
@@ -68,10 +81,10 @@ let rec expr =
   | TAssignExp (TIndexVar (v, e'), e) ->
       E.apply_nolabs (E.lid "Array.set") [var v; expr e'; expr e]
   | TForExp (index, start, finish, body, false) ->
-      E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body)
+      E.for_ (Location.mknoloc index) (expr start) (expr finish) Upto (expr body)
   | TForExp (index, start, finish, body, true) ->
       E.try_
-        (E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body))
+        (E.for_ (Location.mknoloc index) (expr start) (expr finish) Upto (expr body))
         [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
   (* | Texp_call (name, []) -> *)
   (*     fprintf out "@[%s@ ()@]" (ident2ocaml name) *)
