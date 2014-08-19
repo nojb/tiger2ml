@@ -20,7 +20,7 @@ open Longident
 let map_opt f = function None -> None | Some x -> Some (f x)
 
 let mkident ?(loc = Location.none)  s =
-  {txt = Longident.parse s; loc }
+  Location.mkloc (Longident.parse s) loc
 
 let rec expr =
   function
@@ -36,13 +36,12 @@ let rec expr =
       E.construct (mkident "()") None false
   | TSeqExp (e1, e2) ->
       E.sequence (expr e1) (expr e2)
-  | TLetExp (id, init, mut, e) ->
+  | TLetExp (id, init, mf, e) ->
       let r, d =
-        match mut with
-          Assigned ->
+        match mf with
+          Mutable m when !m ->
             Nonrecursive, [P.var (Location.mknoloc id), E.apply_nolabs (E.lid "ref") [expr init]]
-        | NotAssigned
-        | Immutable ->
+        | _ ->
             Nonrecursive, [P.var (Location.mknoloc id), expr init]
       in
       E.let_ r d (expr e)
@@ -101,11 +100,10 @@ let rec expr =
 
 and var =
   function
-    TNameVar (s, mut) ->
-      if !mut = Assigned then
-        E.apply_nolabs (E.lid "!") [E.lid s]
-      else
-        E.lid s
+    TNameVar (s, Mutable m) when !m ->
+      E.apply_nolabs (E.lid "!") [E.lid s]
+  | TNameVar (s, _) ->
+      E.lid s
   (* | Tref_field (r, name) -> *)
   (*     fprintf out "@[Option.get@ ("; *)
   (*     transl_ref out r; *)

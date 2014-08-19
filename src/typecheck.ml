@@ -10,9 +10,8 @@ let map_default f x = function
   | None -> x
 
 type mutable_flag =
-    Assigned
-  | Immutable
-  | NotAssigned
+    Immutable
+  | Mutable of bool ref
 
 type exp =
     TIntExp of int
@@ -34,7 +33,7 @@ type exp =
   | TRecordExp of (string * exp) list
 
 and var =
-    TNameVar of string * mutable_flag ref
+    TNameVar of string * mutable_flag
   | TFieldVar of var * string
   | TIndexVar of var * exp
 
@@ -56,7 +55,7 @@ let new_type_id () =
 module SMap = Map.Make (String)
 
 type value =
-  | Var of typ * mutable_flag ref
+  | Var of typ * mutable_flag
   | Fun of typ list * typ
 
 type env = {
@@ -284,10 +283,10 @@ and exp env =
         begin
           begin
             match rc with
-              TNameVar (_, {contents = Immutable}) ->
+              TNameVar (_, Immutable) ->
                 error (loc_exp e) "immutable variable"
-            | TNameVar (_, mut) ->
-                mut := Assigned
+            | TNameVar (_, Mutable m) ->
+                m := true
             | _ -> ()
           end;
           TUnitTyp, TAssignExp (rc, ec)
@@ -302,7 +301,7 @@ and exp env =
   | PForExp (_, (_, index), start, finish, body) ->
       let start = int_exp env start in
       let finish = int_exp env finish in
-      let env = add_var env index TIntTyp (ref Immutable) in
+      let env = add_var env index TIntTyp Immutable in
       let env = enter_loop env in
       let body = unit_exp env body in
       TUnitTyp, TForExp (index, start, finish, body, !(env.has_break))
@@ -345,10 +344,10 @@ and dec env d e =
             find_typ env t
       in
       if eq_typ env vart initt then 
-        let mf = ref NotAssigned in
+        let mf = Mutable (ref false) in
         let env = add_var env name vart mf in
         let t, e = exp env e in
-        t, TLetExp (name, init1, !mf, e)
+        t, TLetExp (name, init1, mf, e)
       else
         error (loc_exp init) "type mismatch in variable declaration"
   | PTypeDec (_, typs) ->
