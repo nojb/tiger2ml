@@ -33,6 +33,7 @@ type error =
   | UnitExpected
   | BadBreak
   | BadParse
+  | IntOrStringExpected
 
 exception Error of Location.t * error
 
@@ -75,6 +76,8 @@ let report ppf =
       fprintf ppf "Illegal usage of `break'"
   | BadParse ->
       fprintf ppf "Parsing error"
+  | IntOrStringExpected ->
+      fprintf ppf "Int or String expected"
 
 (*let get_file_line p =
   let ic = open_in p.pos_filename in begin

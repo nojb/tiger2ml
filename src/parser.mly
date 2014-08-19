@@ -129,31 +129,31 @@ record_field_list
 
 exp
   : exp PLUS exp
-      { PBinExp (loc (), $1, Add, $3) }
+      { PBinExp (loc (), $1, "+", $3) }
   | exp TIMES exp
-      { PBinExp (loc (), $1, Times, $3) }
+      { PBinExp (loc (), $1, "*", $3) }
   | exp DIV exp
-      { PBinExp (loc (), $1, Div, $3) }
+      { PBinExp (loc (), $1, "/", $3) }
   | exp MINUS exp
-      { PBinExp (loc (), $1, Minus, $3) }
+      { PBinExp (loc (), $1, "-", $3) }
   | exp AND exp
-      { PBinExp (loc (), $1, And, $3) }
+      { PBinExp (loc (), $1, "&", $3) }
   | exp EQ exp
-      { PBinExp (loc (), $1, Eq, $3) }
+      { PBinExp (loc (), $1, "=", $3) }
   | exp OR exp
-      { PBinExp (loc (), $1, Or, $3) }
+      { PBinExp (loc (), $1, "|", $3) }
   | exp NEQ exp
-      { PBinExp (loc (), $1, Neq, $3) }
+      { PBinExp (loc (), $1, "<>", $3) }
   | exp LT exp
-      { PBinExp (loc (), $1, Lt, $3) }
+      { PBinExp (loc (), $1, "<", $3) }
   | exp LE exp
-      { PBinExp (loc (), $1, Le, $3) }
+      { PBinExp (loc (), $1, "<=", $3) }
   | exp GT exp
-       { PBinExp (loc (), $1, Gt, $3) }
+       { PBinExp (loc (), $1, ">", $3) }
   | exp GE exp
-      { PBinExp (loc (), $1, Ge, $3) }
+      { PBinExp (loc (), $1, ">=", $3) }
   | MINUS exp %prec UMINUS
-      { PUnaryExp (loc (), Neg, $2) }
+      { PUnaryExp (loc (), "-", $2) }
   | INT
       { PIntExp (loc (), $1) }
   | STRING

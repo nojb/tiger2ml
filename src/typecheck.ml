@@ -26,7 +26,6 @@ type mutable_flag =
 type exp =
     TIntExp of int
   | TStringExp of string
-  | TBinExp of exp * binop * exp
   | TNilExp
   | TBreakExp
   | TUnitExp
@@ -183,8 +182,6 @@ let add_typ env name t =
   { env with types = SMap.add name t env.types }
 ;;
 
-(* check that in fact this can never fail to find the involved types --
- * theoretically this has been checked when the declarations where processed *)
 let equal_types t1 t2 =
   match actual_type t1, actual_type t2 with
     (TArrayTyp _ | TRecordTyp _), (TArrayTyp _ | TRecordTyp _) ->
@@ -266,10 +263,29 @@ and unit_exp env e =
   else
     error (loc_exp e) UnitExpected
 
+and typ_exp env t e =
+  let t', e' = exp env e in
+  if equal_types t t' then
+    e'
+  else
+    error (loc_exp e) TypeMismatch
+
+and int_or_string_exp env e =
+  let t, e' = exp env e in
+  match actual_type t with
+    TIntTyp
+  | TStringTyp ->
+      t, e'
+  | _ ->
+      error (loc_exp e) IntOrStringExpected
+
 and nil_exp env t e =
   match e with
-    PNilExp _ ->
-      (* if is_record t FIXME *) TNilExp
+    PNilExp loc ->
+      if is_record_type t then
+        TNilExp
+      else
+        error loc TypeMismatch
   | _ as e ->
       let t1, e1 = exp env e in
       if equal_types t t1 then
@@ -300,11 +316,41 @@ and exp env =
         | NoLoop ->
             error loc BadBreak
       end
-  | PBinExp (_, e1, op, e2) ->
-      typecheck_bin env e1 op e2
-  | PUnaryExp (_, Neg, e) ->
+  | PBinExp (_, e1, ("+" | "-" | "*" | "/" as op), e2) ->
+      let e1 = int_exp env e1 in
+      let e2 = int_exp env e2 in
+      TIntTyp, TCallExp (op, [e1; e2])
+  | PBinExp (_, e1, "&", e2) ->
+      let e1 = int_exp env e1 in
+      let e2 = int_exp env e2 in
+      TIntTyp, TCallExp ("&&", [e1; e2])
+  | PBinExp (_, e1, "|", e2) ->
+      let e1 = int_exp env e1 in
+      let e2 = int_exp env e2 in
+      TIntTyp, TCallExp ("||", [e1; e2])
+  | PBinExp (_, e1, ("<" | "<=" | ">=" | ">" as op), e2) ->
+      let t1, e1 = int_or_string_exp env e1 in
+      let e2 = typ_exp env t1 e2 in
+      TIntTyp, TCallExp (op, [e1; e2])
+      (*   | "=" | "<>" -> *)
+      (*       begin *)
+      (*         match t with *)
+      (*           TIntTyp *)
+      (*         | TUnitTyp *)
+      (*         | TStringTyp -> *)
+      (*             TIntTyp, TBinExp (e1c, op, e2c) *)
+      (*         | TRecordTyp _ *)
+      (*         | TArrayTyp _ -> *)
+      (*             TIntTyp, TBinExp (e1c, "==", e2c) *)
+      (*         | _ -> *)
+      (*             assert false *)
+      (*       end *)
+      (*   | _ -> *)
+      (*       assert false *)
+      (* end *)
+  | PUnaryExp (_, "-", e) ->
       let e = int_exp env e in
-      TIntTyp, assert false (* Texp_bin_int (Texp_int 0, Minus, ec) *)
+      TIntTyp, TCallExp ("~-", [e])
   | PIfExp (_, e1, e2, None) ->
       let e1 = int_exp env e1 in
       let e2 = unit_exp env e2 in
@@ -438,51 +484,6 @@ and dec env d e =
       in
       t, TLetRecExp (funs, e)
          
-and typecheck_bin env e1 op e2 =
-  assert false
-  (* let e1t, e1c = exp env lf e1 in *)
-  (* let e2t, e2c = exp env lf e2 in *)
-  (* match op with *)
-  (*   Add | Minus | Times | Div -> *)
-  (*     if eq_typ env e1t Ttyp_int then *)
-  (*       if eq_typ env e2t Ttyp_int then *)
-  (*         (Ttyp_int, Texp_bin_math (e1c, op, e2c)) *)
-  (*       else *)
-  (*         error (posn e2) "integer exp required" *)
-  (*     else *)
-  (*       error (posn e1) "integer exp required" *)
-  (* | And | Or -> *)
-  (*     if eq_typ env e1t Ttyp_int then *)
-  (*       if eq_typ env e2t Ttyp_int then *)
-  (*         (Ttyp_int, Texp_bin_int (e1c, op, e2c)) *)
-  (*       else *)
-  (*         error (posn e2) "integer exp required" *)
-  (*     else *)
-  (*       error (posn e1) "integer exp required" *)
-  (* | Lt | Le | Gt | Ge -> *)
-  (*     if eq_typ env e1t Ttyp_int then *)
-  (*       if eq_typ env e2t Ttyp_int then *)
-  (*         (Ttyp_int, Texp_bin_cmp (e1c, op, e2c)) *)
-  (*       else *)
-  (*         error (posn e2) "integer exp required" *)
-  (*     else if eq_typ env e1t Ttyp_string then *)
-  (*       if eq_typ env e2t Ttyp_string then *)
-  (*         (Ttyp_int, Texp_bin_cmp (e1c, op, e2c)) *)
-  (*       else *)
-  (*         error (posn e2) "string exp required" *)
-  (*     else *)
-  (*       error (posn e1) "integer or string exp required" *)
-  (* | Eq | Neq -> *)
-  (*     if eq_typ env e1t Ttyp_int then *)
-  (*       (Ttyp_int, Texp_bin_cmp (e1c, op, e2c)) *)
-  (*     else if eq_typ env e1t Ttyp_string then *)
-  (*       (Ttyp_int, Texp_bin_cmp (e1c, op, e2c)) *)
-  (*     else if eq_typ env e1t e2t then *)
-  (*       (Ttyp_int, Texp_bin_gen (e1c, op, e2c)) *)
-  (*     else *)
-  (*       error (posn e2) "comparing expressions of different types" *)
-;;
-
 let string = TStringTyp
 let int = TIntTyp
 let unit = TUnitTyp

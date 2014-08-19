@@ -19,21 +19,14 @@ type loc = Location.t
 type id =
   loc * string
 
-type binop =
-    Add | Times | Eq | Minus | And | Or | Div
-  | Neq | Lt | Le | Ge | Gt
-
-type unaryop =
-    Neg
-
 type var =
     PNameVar of loc * id
   | PFieldVar of loc * var * id
   | PIndexVar of loc * var * exp
 
 and exp =
-    PBinExp of loc * exp * binop * exp
-  | PUnaryExp of loc * unaryop * exp
+    PBinExp of loc * exp * string * exp
+  | PUnaryExp of loc * string * exp
   | PIntExp of loc * int
   | PStringExp of loc * string
   | PAssignExp of loc * var * exp

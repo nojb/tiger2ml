@@ -109,23 +109,6 @@ let rec expr =
       E.apply_nolabs (E.lid name) [E.construct (mkident "()") None false]
   | TCallExp (name, args) ->
       E.apply_nolabs (E.lid name) (List.map expr args)
-  (* | Texp_bin_int (e1, And, e2) -> *)
-  (*     fprintf out "@[(if@ (%a)@,<>@,0@,&&@,(%a)@,<>@,0@ then@ 1@ else@ 0)@]" *)
-  (*       transl e1 transl e2 *)
-  (* | Texp_bin_int (e1, Or, e2) -> *)
-  (*     fprintf out "@[(if@ (%a)@,<>@,0@,||@,(%a)@,<>@,0@ then@ 1@ else@ 0)@]" *)
-  (*       transl e1 transl e2 *)
-  (* | Texp_bin_int (_, _, _) -> assert false *)
-  (* | Texp_bin_math (e1, op, e2) -> *)
-  (*     fprintf out "@[(%a)@,%s@,(%a)@]" *)
-  (*       transl e1 (mathop_impl op) transl e2 *)
-  (* | Texp_bin_cmp (e1, op, e2) -> *)
-  (*     fprintf out "@[(if@ (%a)@,%s@,(%a)@ then@ 1@ else@ 0)@]" transl e1 (cmpop_impl op) transl e2 *)
-  (* | Texp_bin_gen (e1, Eq, e2) -> *)
-  (*     fprintf out "@[(if@ (%a)@,==@,(%a)@ then@ 1@ else@ 0)@]" transl e1 transl e2 *)
-  (* | Texp_bin_gen (e1, Neq, e2) -> *)
-  (*     fprintf out "@[(if@ (%a)@,!=@,(%a)@ then@ 1@ else@ 0)@]" transl e1 transl e2 *)
-  (* | Texp_bin_gen (_, _, _) -> assert false *)
   | TArrayExp (size, init) ->
       E.apply_nolabs (E.lid "Array.make") [expr size; expr init]
   | TRecordExp fields ->
