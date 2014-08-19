@@ -82,9 +82,8 @@ let rec expr = function
   (* | Texp_bin_gen (e1, Neq, e2) -> *)
   (*     fprintf out "@[(if@ (%a)@,!=@,(%a)@ then@ 1@ else@ 0)@]" transl e1 transl e2 *)
   (* | Texp_bin_gen (_, _, _) -> assert false *)
-  (* | Texp_array (size, init) -> *)
-  (*     fprintf out "Array.make@ (%a)@ (%a)" *)
-  (*       transl size transl init *)
+  | Texp_array (size, init) ->
+      E.apply_nolabs (E.lid "Array.make") [expr size; expr init]
   (* | Texp_record fields -> *)
   (*     fprintf out "Some{%a}" *)
   (*       (separated (fun out () -> fprintf out ";@ ") *)
