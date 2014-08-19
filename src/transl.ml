@@ -93,13 +93,10 @@ let rec expr =
       E.try_
         (E.for_ (Location.mknoloc index) (expr start) (expr finish) Upto (expr body))
         [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
-  (* | Texp_call (name, []) -> *)
-  (*     fprintf out "@[%s@ ()@]" (ident2ocaml name) *)
-  (* | Texp_call (name, args) -> *)
-  (*     fprintf out "@[%s@ @[<2>" (ident2ocaml name); *)
-  (*     separated (fun out () -> fprintf out "@ ") *)
-  (*       (fun out x -> fprintf out "(%a)" transl x) out args; *)
-  (*     fprintf out "@]@]" *)
+  | TCallExp (name, []) ->
+      E.apply_nolabs (E.lid name) [E.construct (mkident "()") None false]
+  | TCallExp (name, args) ->
+      E.apply_nolabs (E.lid name) (List.map expr args)
   (* | Texp_bin_int (e1, And, e2) -> *)
   (*     fprintf out "@[(if@ (%a)@,<>@,0@,&&@,(%a)@,<>@,0@ then@ 1@ else@ 0)@]" *)
   (*       transl e1 transl e2 *)

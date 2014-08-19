@@ -320,7 +320,8 @@ and exp env =
           else
             error loc TypeMismatch
         with
-          Invalid_argument _ -> error loc BadArgumentCount
+          Invalid_argument _ ->
+            error loc BadArgumentCount
       end
   | PAssignExp (_, v, e) ->
       let rt, rc = var env v in
