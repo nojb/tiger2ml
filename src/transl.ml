@@ -83,8 +83,8 @@ let rec expr =
       var v
   | TAssignExp (TNameVar (name, _), e) ->
       E.apply_nolabs (E.lid ":=") [E.lid name; expr e]
-  (* | TAssignExp (TFieldVar (v, name), e) -> *)
-  (*     fprintf out "%a.%s<-(%a)" transl_ref r (ident2ocaml name) transl e *)
+  | TAssignExp (TFieldVar (v, name), e) ->
+      E.setfield (var v) (mkident name) (expr e)
   | TAssignExp (TIndexVar (v, e'), e) ->
       E.apply_nolabs (E.lid "Array.set") [var v; expr e'; expr e]
   | TForExp (index, start, finish, body, false) ->
@@ -116,17 +116,16 @@ let rec expr =
   (* | Texp_bin_gen (_, _, _) -> assert false *)
   | TArrayExp (size, init) ->
       E.apply_nolabs (E.lid "Array.make") [expr size; expr init]
-  (* | Texp_record fields -> *)
-  (*     fprintf out "Some{%a}" *)
-  (*       (separated (fun out () -> fprintf out ";@ ") *)
-  (*       (fun out (name, init) -> fprintf out "%s=%a" (ident2ocaml *)
-  (*         (name)) transl init)) fields *)
+  | TRecordExp fields ->
+      let mkfield (id, e) = mkident id, expr e in
+      E.construct (mkident "Some") (Some (E.record (List.map mkfield fields) None)) false
   | TIfExp (e1, e2, e3) ->
       E.ifthenelse (expr e1) (expr e2) (map_opt expr e3)
   | TWhileExp (e1, e2, false) ->
       E.while_ (expr e1) (expr e2)
   | TWhileExp (e1, e2, true) ->
-      E.try_ (E.while_ (expr e1) (expr e2))
+      E.try_
+        (E.while_ (expr e1) (expr e2))
         [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
 
 and var =
@@ -135,30 +134,14 @@ and var =
       E.apply_nolabs (E.lid "!") [E.lid s]
   | TNameVar (s, _) ->
       E.lid s
-  (* | Tref_field (r, name) -> *)
-  (*     fprintf out "@[Option.get@ ("; *)
-  (*     transl_ref out r; *)
-  (*     fprintf out ")."; *)
-  (*     fprintf out "%s@]" (ident2ocaml name) *)
+  | TFieldVar (v, name) ->
+      E.match_
+        (var v)
+        [P.construct (mkident "None") None false, E.assertfalse (); (* FIXME report error ! *)
+         P.construct (mkident "Some") (Some (P.var (Location.mknoloc "x"))) false,
+         E.field (E.lid "x") (mkident name)] (* FIXME 'x' can be captured ?! *)
   | TIndexVar (v, e) ->
       E.apply_nolabs (E.lid "Array.get") [var v; expr e]
-
-(* and transl_fundec out = function *)
-(*   | (name, [], body) -> *)
-(*       fprintf out "%s@ ()@ =@ @[<2>%a@]@\n" *)
-(*         (ident2ocaml name) transl body *)
-(*   | (name, args, body) -> *)
-(*       fprintf out "%s@ %a@ =@\n" *)
-(*         (ident2ocaml name) *)
-(*         (separated (fun out () -> fprintf out "@ ") *)
-(*           (fun out (s, _) -> fprintf out "%s" (ident2ocaml s))) args; *)
-(*       List.iter *)
-(*         (fun (name, mut) -> *)
-(*           if !mut = Assigned then *)
-(*             let name = ident2ocaml name in *)
-(*             fprintf out "let@ %s=ref@ %s@ in@\n" name name) *)
-(*         args; *)
-(*       fprintf out "@[<2>%a@]@\n" transl body *)
 
 let emit_ocaml e =
   let e = expr e in
