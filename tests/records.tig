@@ -1,0 +1,2 @@
+let type a = { field1 : int , field2 : int }
+in a { field1 = 1; field2 = 3 } end

@@ -1,0 +1,6 @@
+let
+  var n := 8
+  function f(k:int):int =
+    let var m := 10
+    in m+n end
+in f(99) end

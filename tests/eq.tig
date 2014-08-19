@@ -1,0 +1,4 @@
+let type intArray = array of int
+  var x : intArray := intArray[10] of 0
+  var y : intArray := intArray[10] of 0
+in printi (x=y); print("\n"); printi(x=x); print("\n") end

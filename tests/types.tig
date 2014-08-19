@@ -1,0 +1,6 @@
+let
+type a = array of int
+type b = array of int
+var ax := a[10] of 0
+var bx := b[10] of 0
+in ax := bx end

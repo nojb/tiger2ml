@@ -1,0 +1,8 @@
+/* (1+2*3-(3+2);1;2;3;()) */
+/*while 1+2 do (2+3;4*5;())*/
+let
+  var N := 8
+  function fact ( n : int ) : int =
+    if n = 0 then 1
+    else n * fact ( n - 1 )
+in fact (N) end

@@ -1,0 +1,5 @@
+let
+  function readint():int =
+  let var i := 0
+  function isdigit(s:string):int=
+  ord(s)>=ord("0") & rd(s)<=ord("9")

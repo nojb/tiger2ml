@@ -1,0 +1,3 @@
+let type intArray = array of int
+var x := intArray["a"] of 0
+in x end

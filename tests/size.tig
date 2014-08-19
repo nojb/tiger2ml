@@ -1,0 +1,7 @@
+let
+var s1 := "hello, "
+var s2 := "world!"
+in
+printi(size(concat(s1,s2)));
+print("\n")
+end

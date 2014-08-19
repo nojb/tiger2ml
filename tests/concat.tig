@@ -1,0 +1,4 @@
+let
+  var s1 := "Hello, "
+  var s2 := "World!"
+in print(concat(s1,s2)); print("\n") end

@@ -1,0 +1,6 @@
+let
+var i := 10
+in
+while i do (printi(i);print("\n");i:=i-1);
+print("Done!\n")
+end
