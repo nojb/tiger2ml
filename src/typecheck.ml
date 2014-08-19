@@ -15,10 +15,6 @@
 open Syntax
 open Error
 
-type loop_flag =
-    InLoop
-  | NoLoop
-
 let map_default f x = function
     Some a -> f a
   | None -> x
@@ -55,7 +51,7 @@ type typ =
     TAliasTyp of string
   | TArrayTyp of int * typ (* int is type_id *)
   | TRecordTyp of int * (string * typ) list (* same *)
-  | TNilTyp
+  | TForwardTyp of typ option ref
   | TUnitTyp
   | TIntTyp
   | TStringTyp
@@ -65,6 +61,7 @@ let type_id_count = ref 0
 let new_type_id () =
   incr type_id_count;
   !type_id_count
+;;
 
 module SMap = Map.Make (String)
 
@@ -72,32 +69,46 @@ type value =
   | Var of typ * mutable_flag
   | Fun of typ list * typ
 
+type loop_flag =
+    InLoop of bool ref
+  | NoLoop
+
 type env = {
   values : value SMap.t;
   types : typ SMap.t;
-  in_loop : bool;
-  has_break : bool ref
+  in_loop : loop_flag;
+  record_types : (int * string list * typ) list ref
 }
 
 let enter_loop env =
-  { env with in_loop = true; has_break = ref false }
+  let has_break = ref false in
+  { env with in_loop = InLoop has_break }, has_break
+
+let new_frame env =
+  { env with in_loop = NoLoop }
 
 let empty_env () ={
   values = SMap.empty;
   types = SMap.empty;
-  in_loop = false;
-  has_break = ref false
+  in_loop = NoLoop;
+  record_types = ref []
 }
 
 let find_typ env (loc, name) =
   try
     SMap.find name env.types
   with
-    Not_found -> error loc TypeNotFound
+    Not_found ->
+      error loc TypeNotFound
+;;
 
-let rec resolve_typ env loc = function
-  | TAliasTyp s -> resolve_typ env loc (find_typ env (loc, s))
-  | _ as x -> x
+let rec resolve_typ env loc =
+  function
+    TAliasTyp s ->
+      resolve_typ env loc (find_typ env (loc, s))
+  | _ as x ->
+      x
+;;
 
 let find_var env (loc, name) =
   try
@@ -107,7 +118,9 @@ let find_var env (loc, name) =
     | _ ->
         raise Not_found
   with
-    Not_found -> error loc VariableNotFound
+    Not_found ->
+      error loc VariableNotFound
+;;
 
 let rec find_record_typ env (loc, name) =
   try
@@ -119,7 +132,9 @@ let rec find_record_typ env (loc, name) =
     | _ ->
         error loc RecordTypeExpected
   with
-    Not_found -> error loc TypeNotFound
+    Not_found ->
+      error loc TypeNotFound
+;;
 
 let rec find_array_typ env (loc, name) =
   try
@@ -131,7 +146,9 @@ let rec find_array_typ env (loc, name) =
     | _ ->
         error loc ArrayTypeExpected
   with
-    Not_found -> error loc TypeNotFound
+    Not_found ->
+      error loc TypeNotFound
+;;
 
 let find_fun env (loc, name) =
   try
@@ -141,10 +158,13 @@ let find_fun env (loc, name) =
     | _ ->
         raise Not_found
   with
-    Not_found -> error loc FunctionNotFound
+    Not_found ->
+      error loc FunctionNotFound
+;;
 
 let add_var env name t mut =
   { env with values = SMap.add name (Var (t, mut)) env.values }
+;;
 
 let add_fun env name args =
   let rec loop r =
@@ -155,34 +175,36 @@ let add_fun env name args =
   in
   let argt, t = loop [] args in
   { env with values = SMap.add name (Fun (argt, t)) env.values }
+;;
 
 let add_typ env name t =
   { env with types = SMap.add name t env.types }
+;;
 
 (* check that in fact this can never fail to find the involved types --
  * theoretically this has been checked when the declarations where processed *)
 let rec eq_typ env t1 t2 =
   match t1, t2 with
-  | TAliasTyp s, t2 ->
+    TAliasTyp s, (_ as t2) ->
       eq_typ env (find_typ env (Location.none, s)) t2
   | _ as t1, TAliasTyp s ->
       eq_typ env t1 (find_typ env (Location.none, s))
   | TArrayTyp (x,_), TArrayTyp (y,_)
   | TRecordTyp (x,_), TRecordTyp (y,_) ->
       x = y
-  | TRecordTyp _, TNilTyp
-  | TNilTyp, TRecordTyp _ ->
-      true
   | _ ->
       t1 = t2 
+;;
 
-let rec typecheck_typ env = function
-  | PNameTyp (_, (_, name)) ->
+let rec typ env =
+  function
+    PNameTyp (_, (_, name)) ->
       TAliasTyp name
   | PArrayTyp (_, t) ->
-      TArrayTyp (new_type_id (), typecheck_typ env t)
+      TArrayTyp (new_type_id (), typ env t)
   | PRecordTyp (_, fields) ->
       TRecordTyp (new_type_id (), List.map (fun ((_, name), typid) -> name, find_typ env typid) fields)
+;;
 
 let rec var env =
   function
@@ -192,13 +214,10 @@ let rec var env =
   | PIndexVar (_, v, index) ->
       begin
         let rt, rc = var env v in
-        let indext, indexc = exp env index in
+        let index = int_exp env index in
         match rt with
           TArrayTyp (_,t) ->
-            if eq_typ env indext TIntTyp then
-              resolve_typ env (loc_var v) t, TIndexVar (rc, indexc)
-            else
-              error (loc_exp index) TypeMismatch
+            resolve_typ env (loc_var v) t, TIndexVar (rc, index)
         | _ ->
             error (loc_var v) ArrayExpected
       end
@@ -261,13 +280,14 @@ and exp env =
   | PNilExp p ->
       error p BadNil
   | PBreakExp loc ->
-      if env.in_loop then
-        begin
-          env.has_break := true;
-          TUnitTyp, TBreakExp
-        end
-      else
-        error loc BadBreak
+      begin
+        match env.in_loop with
+          InLoop has_break ->
+            has_break := true;
+            TUnitTyp, TBreakExp
+        | NoLoop ->
+            error loc BadBreak
+      end
   | PBinExp (_, e1, op, e2) ->
       typecheck_bin env e1 op e2
   | PUnaryExp (_, Neg, e) ->
@@ -287,9 +307,9 @@ and exp env =
         error (loc_exp e3) TypeMismatch
   | PWhileExp (_, e1, e2) ->
       let e1 = bool_exp env e1 in
-      let env = enter_loop env in
+      let env, has_break = enter_loop env in
       let e2 = unit_exp env e2 in
-      TUnitTyp, TWhileExp (e1, e2, !(env.has_break))
+      TUnitTyp, TWhileExp (e1, e2, !has_break)
   | PCallExp (_, (loc, name as id), el) ->
       begin
         let argt, t = find_fun env id in
@@ -328,9 +348,9 @@ and exp env =
       let start = int_exp env start in
       let finish = int_exp env finish in
       let env = add_var env index TIntTyp Immutable in
-      let env = enter_loop env in
+      let env, has_break = enter_loop env in
       let body = unit_exp env body in
-      TUnitTyp, TForExp (index, start, finish, body, !(env.has_break))
+      TUnitTyp, TForExp (index, start, finish, body, !has_break)
   | PArrayExp (_, typid, size, init) ->
       let size = int_exp env size in
       let initt, initc = exp env init in
@@ -376,26 +396,34 @@ and dec env d e =
       (*   (fun env (name, typ) -> *)
       (*      add_typ env name (typecheck_typ env typ)) env tl, td *)
   | PFunctionDec (_, funs) ->
-      assert false
-      (* let env1 = List.fold_left (fun env (name, args, ret_typid, _) -> *)
-      (*     let rett = map_default (find_typ env) TUnitTyp ret_typid in *)
-      (*     add_fun env name *)
-      (*       (List.map (fun (_, y) -> find_typ env y) args) rett) *)
-      (*     env fl *)
-      (* in (env1, TFunctionDec (List.map *)
-      (*                           (fun (name, args, ret_typid, body) -> *)
-      (*                              let (env2, muts) = List.fold_left (fun (env, muts) (arg_name, arg_typid) -> *)
-      (*                                  let mut = ref NonAssigned in *)
-      (*                                  (add_var env arg_name (find_typ env arg_typid) mut, mut :: muts)) *)
-      (*                                  (env1, []) args in *)
-      (*                              let (bodyt, bodyc) = typecheck env2 error_break body in *)
-      (*                              let rett = map_default (find_typ env) Ttyp_void ret_typid in *)
-      (*                              begin *)
-      (*                                if eq_typ env bodyt rett then *)
-      (*                                  (name, List.map2 (fun (x, _) mut -> (x, mut)) args (List.rev muts), bodyc) *)
-      (*                                else *)
-      (*                                  error (posn body) "body of function does not match return type" *)
-      (*                              end) fl) :: td) *)
+      let env1 =
+        List.fold_left
+          (fun env ((_, name), args, ret_typid, _) ->
+             let rett = map_default (find_typ env) TUnitTyp ret_typid in
+             add_fun env name ((List.map (fun (_, y) -> find_typ env y) args) @ [rett]))
+          env funs
+      in
+      let t, e = exp env1 e in
+      let funs =
+        List.map
+          (fun ((_, name), args, ret_typid, body) ->
+             let env1 = new_frame env1 in
+             let env2, muts =
+               List.fold_left
+                 (fun (env, muts) ((_, arg_name), arg_typid) ->
+                    let mut = Mutable (ref false) in
+                    add_var env arg_name (find_typ env arg_typid) mut, mut :: muts)
+                 (env1, []) args
+             in
+             let bodyt, bodyc = exp env2 body in
+             let rett = map_default (find_typ env) TUnitTyp ret_typid in
+             if eq_typ env bodyt rett then
+               (name, List.map2 (fun ((_, x), _) mut -> (x, mut)) args (List.rev muts), bodyc)
+             else
+               error (loc_exp body) TypeMismatch)
+          funs
+      in
+      t, TLetRecExp (funs, e)
          
 and typecheck_bin env e1 op e2 =
   assert false
@@ -440,6 +468,7 @@ and typecheck_bin env e1 op e2 =
   (*       (Ttyp_int, Texp_bin_gen (e1c, op, e2c)) *)
   (*     else *)
   (*       error (posn e2) "comparing expressions of different types" *)
+;;
 
 let string = TStringTyp
 let int = TIntTyp

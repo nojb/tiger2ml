@@ -259,8 +259,12 @@ var
   ;
 
 fun_dec
-  : FUNCTION id LP type_field_list RP EQ exp
+  : FUNCTION id LP RP EQ exp
+      { ($2, [], None, $6) }
+  | FUNCTION id LP type_field_list RP EQ exp
       { ($2, $4, None, $7) }
+  | FUNCTION id LP RP COLON id EQ exp
+      { ($2, [], Some $6, $8) }
   | FUNCTION id LP type_field_list RP COLON id EQ exp
-      { ($2, $4,  Some $7, $9) }
+      { ($2, $4, Some $7, $9) }
   ;

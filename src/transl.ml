@@ -60,16 +60,23 @@ let rec expr =
       in
       E.let_ Nonrecursive d (expr e)
   | TLetRecExp (funs, e) ->
-      let makefun (id, args, e) =
-        let e = List.fold_right
-            (fun (a, m) e ->
-               let e = E.function_ "" None [P.var (Location.mknoloc a), e] in
-               match m with
-                 Typecheck.Mutable m when !m ->
-                   E.let_ Nonrecursive [P.var (Location.mknoloc a), E.apply_nolabs (E.lid "ref") [E.lid a]] e
-               | _ ->
-                   e) args (expr e) in
-        P.var (Location.mknoloc id), e
+      let makefun =
+        function
+          (id, [], e) ->
+            P.var (Location.mknoloc id),
+            E.function_ "" None [P.construct (mkident "()") None false, (expr e)]
+        | (id, args, e) ->
+            let e =
+              List.fold_right
+                (fun (a, m) e ->
+                   let e = E.function_ "" None [P.var (Location.mknoloc a), e] in
+                   match m with
+                     Typecheck.Mutable m when !m ->
+                       E.let_ Nonrecursive [P.var (Location.mknoloc a), E.apply_nolabs (E.lid "ref") [E.lid a]] e
+                   | _ ->
+                       e)
+                args (expr e) in
+            P.var (Location.mknoloc id), e
       in
       E.let_ Recursive (List.map makefun funs) (expr e)
   | TVarExp v ->
