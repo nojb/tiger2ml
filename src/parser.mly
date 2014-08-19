@@ -1,14 +1,24 @@
 %{
-  open Syntax
+open Syntax
 
-  let mkexp p e = { posn = p; desc = e }
-  let mkref p r = { posn = p; desc = r }
-  let mkdec p d = { posn = p; desc = d }
-  let mkid p s = { posn = p; desc = s }
+let loc_nth i =
+  { Location.loc_start = Parsing.rhs_start_pos i;
+    loc_end = Parsing.rhs_end_pos i;
+    loc_ghost = false }
+
+let loc () =
+  { Location.loc_start = Parsing.symbol_start_pos ();
+    loc_end = Parsing.symbol_end_pos ();
+    loc_ghost = false }
+
+let merge_loc loc1 loc2 =
+  { Location.loc_start = loc1.Location.loc_start;
+    loc_end = loc2.Location.loc_end;
+    loc_ghost = false }
 %}
 
 %token <int> INT
-%token <string> STR
+%token <string> STRING
 %token <string> IDENT
 %token PLUS
 %token TIMES
@@ -66,116 +76,177 @@
 
 %start program
 
-%type <Syntax.exp Syntax.pos> program
-%type <Syntax._ref Syntax.pos> lval
-%type <Syntax.exp Syntax.pos> exp
+%type <Syntax.exp> program
+%type <Syntax.var> var
+%type <Syntax.exp> exp
 
 %%
 
-program: exp EOF
+program
+  : exp EOF
+      { $1 }
+  ;
+
+id
+  : IDENT
+      { (loc (), $1) }
+  ;
+
+exp_seq
+  : exp
     { $1 }
-;
+  | exp SEMI exp_seq
+    { PSeqExp (loc (), $1, $3) }
+  ;
 
-exp: exp PLUS exp
-    { mkexp $startpos (Aexp_bin ($1, Add, $3)) }
+exp_list
+  : exp
+      { $1 :: [] }
+  | exp COMMA exp_list
+      { $1 :: $3 }
+  ;
+
+record_field_list
+  : id EQ exp
+      { ($1, $3) :: [] }
+  | id EQ exp COMMA record_field_list
+      { ($1, $3) :: $5 }
+  ;
+
+exp
+  : exp PLUS exp
+      { PBinExp (loc (), $1, Add, $3) }
   | exp TIMES exp
-    { mkexp $startpos (Aexp_bin ($1, Times, $3)) }
+      { PBinExp (loc (), $1, Times, $3) }
   | exp DIV exp
-    { mkexp $startpos (Aexp_bin ($1, Div, $3)) }
+      { PBinExp (loc (), $1, Div, $3) }
   | exp MINUS exp
-    { mkexp $startpos (Aexp_bin ($1, Minus, $3)) }
+      { PBinExp (loc (), $1, Minus, $3) }
   | exp AND exp
-    { mkexp $startpos (Aexp_bin ($1, And, $3)) }
+      { PBinExp (loc (), $1, And, $3) }
   | exp EQ exp
-    { mkexp $startpos (Aexp_bin ($1, Eq, $3)) }
+      { PBinExp (loc (), $1, Eq, $3) }
   | exp OR exp
-    { mkexp $startpos (Aexp_bin ($1, Or, $3)) }
+      { PBinExp (loc (), $1, Or, $3) }
   | exp NEQ exp
-    { mkexp $startpos (Aexp_bin ($1, Neq, $3)) }
+      { PBinExp (loc (), $1, Neq, $3) }
   | exp LT exp
-    { mkexp $startpos (Aexp_bin ($1, Lt, $3)) }
+      { PBinExp (loc (), $1, Lt, $3) }
   | exp LE exp
-    { mkexp $startpos (Aexp_bin ($1, Le, $3)) }
+      { PBinExp (loc (), $1, Le, $3) }
   | exp GT exp
-    { mkexp $startpos (Aexp_bin ($1, Gt, $3)) }
+       { PBinExp (loc (), $1, Gt, $3) }
   | exp GE exp
-    { mkexp $startpos (Aexp_bin ($1, Ge, $3)) }
+      { PBinExp (loc (), $1, Ge, $3) }
   | MINUS exp %prec UMINUS
-    { mkexp $startpos (Aexp_unary (Neg, $2)) }
+      { PUnaryExp (loc (), Neg, $2) }
   | INT
-    { mkexp $startpos (Aexp_int $1) }
-  | STR
-    { mkexp $startpos (Aexp_str $1) }
+      { PIntExp (loc (), $1) }
+  | STRING
+      { PStringExp (loc (), $1) }
   | WHILE exp DO exp
-    { mkexp $startpos (Aexp_while ($2, $4)) }
-  | FOR IDENT COLONEQ exp TO exp DO exp
-    { mkexp $startpos (Aexp_for ($2, $4, $6, $8)) }
+      { PWhileExp (loc (), $2, $4) }
+  | FOR id COLONEQ exp TO exp DO exp
+      { PForExp (loc (), $2, $4, $6, $8) }
   | NIL
-    { mkexp $startpos Aexp_nil }
+      { PNilExp (loc ()) }
   | BREAK
-    { mkexp $startpos Aexp_break }
-  | LP x = separated_list(SEMI,exp) RP
-    { mkexp $startpos (Aexp_seq x) }
-  | lval
-    { mkexp $startpos (Aexp_ref $1) }
-  | lval COLONEQ exp
-    { mkexp $startpos (Aexp_set ($1, $3)) }
-  | y = lval LP x = separated_list(COMMA,exp) RP
-    { match y with
-      | { posn = p; desc = Aref_name s } ->
-        mkexp p (Aexp_call (s, x))
-      | _ -> $syntaxerror }
-  | lval LB exp RB OF exp
-    { match $1 with
-      | { posn = p; desc = Aref_name s } -> mkexp p (Aexp_array (s, $3, $6))
-      | _ -> $syntaxerror }
-  | x = lval LC y = separated_list (COMMA, separated_pair(IDENT,EQ,exp)) RC
-    { match x with
-      | { posn = p; desc = Aref_name s } ->
-        mkexp p (Aexp_record (s, y))
-      | _ -> $syntaxerror }
-  | LET x = list(dec) IN y = separated_list(SEMI,exp) END
-    { mkexp $startpos (Aexp_let (x, y)) }
-  | IF x = exp THEN y = exp z = ioption(preceded(ELSE,exp))
-    { mkexp $startpos (Aexp_if (x, y, z)) }
-  | error { Error.error $startpos "parser error" }
-;
+      { PBreakExp (loc ()) }
+  | LP RP
+      { PUnitExp (loc ()) }
+  | LP exp_seq RP
+      { $2 }
+  | var
+      { PVarExp (loc (), $1) }
+  | var COLONEQ exp
+      { PAssignExp (loc (), $1, $3) }
+  | id LP RP
+      { PCallExp (loc (), $1, []) }
+  | id LP exp_list RP
+      { PCallExp (loc (), $1, $3) }
+  | var LB exp RB OF exp
+      { match $1 with
+          PNameVar (loc, id) -> PArrayExp (loc, id, $3, $6)
+        | _ -> raise Parse_error }
+  | id LC RC
+      { PRecordExp (loc (), $1, []) }
+  | id LC record_field_list RC
+      { PRecordExp (loc (), $1, $3) }
+  | LET decs IN exp_seq END
+      { List.fold_right (fun d e -> PLetExp (loc_dec d, d, e)) $2 $4 }
+  | IF exp THEN exp
+      { PIfExp (loc (), $2, $4, None) }
+  | IF exp THEN exp ELSE exp
+      { PIfExp (loc (), $2, $4, Some $6) }
+  | error
+      { Error.error (loc ()) "parser error" }
+  ;
 
-dec: VAR x = IDENT y = option(preceded(COLON,ident)) COLONEQ z = exp
-    { mkdec $startpos (Adec_var (x, y, z)) }
-  | x = nonempty_list(typdec)
-    { mkdec $startpos (Adec_typ x) }
-  | x = nonempty_list(fundec)
-    { mkdec $startpos (Adec_fun x) }
-;
+decs
+  : var_dec
+      { PVarDec (loc (), $1) :: [] }
+  | typ_dec
+      { PTypeDec (loc (), [$1]) :: [] }
+  | fun_dec
+      { PFunctionDec (loc (), [$1]) :: [] }
+  | var_dec decs
+      { PVarDec (loc_nth 1, $1) :: $2 }
+  | typ_dec decs
+      { match $2 with
+          PTypeDec (loc1, typs) :: decs ->
+            PTypeDec (merge_loc (loc_nth 1) loc1, $1 :: typs) :: decs
+        | _ as decs ->
+            PTypeDec (loc_nth 1, [$1]) :: decs }
+  | fun_dec decs
+      { match $2 with
+          PFunctionDec (loc1, funs) :: decs ->
+            PFunctionDec (merge_loc (loc_nth 1) loc1, $1 :: funs) :: decs
+        | _ as decs ->
+            PFunctionDec (loc_nth 1, [$1]) :: decs }
+  ;
 
-%inline typdec: TYPE x = IDENT EQ y = typ
-    { (x, y) }
-;
+var_dec
+  : VAR id COLONEQ exp
+      { ($2, None, $4) }
+  | VAR id COLON id COLONEQ exp
+      { ($2, Some $4, $6) }
+  ;
+
+typ_dec
+  : TYPE id EQ typ
+    { ($2, $4) }
+  ;
   
-%inline fundec:
-    FUNCTION x = IDENT LP
-      y = separated_list(COMMA,separated_pair(IDENT,COLON,ident)) RP
-      z = option(preceded(COLON,ident)) EQ w = exp
-    { (x, y, z, w) }
-;
+type_field_list
+  : id COLON id
+      { ($1, $3) :: [] }
+  | id COLON id COMMA type_field_list
+      { ($1, $3) :: $5 }
+  ;
 
-ident: IDENT
-  { mkid $startpos $1 }
-;
-
-typ: IDENT
-    { Atyp_alias $1 }
+typ
+  : id
+      { PNameTyp (loc (), $1) }
   | ARRAY OF typ
-    { Atyp_array $3 }
-  | LC x = separated_list(COMMA,separated_pair(IDENT,COLON,ident)) RC
-    { Atyp_record x }
-;
+      { PArrayTyp (loc (), $3) }
+  | LC RC
+      { PRecordTyp (loc (), []) }
+  | LC type_field_list RC
+      { PRecordTyp (loc (), $2) }
+  ;
 
-lval: ident
-    { mkref $startpos (Aref_name $1) }
-  | lval DOT ident
-    { mkref $startpos (Aref_field ($1, $3)) }
-  | lval LB exp RB
-    { mkref $startpos (Aref_index ($1, $3)) }
-;
+var
+  : id
+      { PNameVar (loc (), $1) }
+  | var DOT id
+      { PFieldVar (loc (), $1, $3) }
+  | var LB exp RB
+      { PIndexVar (loc (), $1, $3) }
+  ;
+
+fun_dec
+  : FUNCTION id LP type_field_list RP EQ exp
+      { ($2, $4, None, $7) }
+  | FUNCTION id LP type_field_list RP COLON id EQ exp
+      { ($2, $4,  Some $7, $9) }
+  ;

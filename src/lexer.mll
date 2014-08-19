@@ -69,7 +69,7 @@ and comment level = parse
 
 and str = parse
   | '"'           { let s = Buffer.contents str_buf in Buffer.clear
-  str_buf; STR s }
+  str_buf; STRING s }
   | '\n'          { incr_linenum lexbuf; Buffer.add_char str_buf '\n'; str lexbuf }
   | "\\n"         { Buffer.add_char str_buf '\n'; str lexbuf }
   | "\\t"         { Buffer.add_char str_buf '\t'; str lexbuf }

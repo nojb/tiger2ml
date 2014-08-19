@@ -1,5 +1,5 @@
 OCAMLBUILD = ocamlbuild
-OCAMLBUILDFLAGS = -classic-display -use-ocamlfind -use-menhir
+OCAMLBUILDFLAGS = -classic-display -use-ocamlfind
 
 native:
 	$(OCAMLBUILD) $(OCAMLBUILDFLAGS) src/tc.native

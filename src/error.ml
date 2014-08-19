@@ -1,6 +1,6 @@
 open Syntax
 
-exception Error of Lexing.position * string
+exception Error of Location.t * string
 
 let error p s =
   raise (Error (p, s))

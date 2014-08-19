@@ -1,4 +1,4 @@
-open Printf
+open Format
 open Error
 
 let get_lexbuf () =
@@ -13,15 +13,13 @@ let _ =
   try
     let lexbuf = get_lexbuf () in
       let prg = Parser.program Lexer.token lexbuf in
-      let (_, typedprg) = Typecheck.typecheck Typecheck.std_env
+      let (_, typedprg) = Typecheck.exp Typecheck.std_env
         Typecheck.error_break prg in
-        Transl.emit_ocaml typedprg;
-        flush stdout
+        Transl.emit_ocaml typedprg
   with
   | Error (p, s) ->
-    fprintf stderr "%sine %d, column %d: %s\n" (if p.Lexing.pos_fname = ""
-    then "L" else "File " ^ p.Lexing.pos_fname ^ ", l")
-      p.Lexing.pos_lnum (p.Lexing.pos_cnum - p.Lexing.pos_bol+1) s; exit(2)
-  | Parser.Error ->
-      fprintf stderr "Parser error (where?). Terminating.\n"; exit(2)
-  | Failure e -> printf "Internal error: %s\n" e; exit(2)
+      eprintf "%a: %s@." Location.print p s
+  | Parsing.Parse_error ->
+      eprintf "Parser error (where?). Terminating.@."
+  | Failure e ->
+      eprintf "Internal error: %s@." e

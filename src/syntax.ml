@@ -1,49 +1,79 @@
 let currfilename = ref ""
 
-type 'a pos = {
-  posn : Lexing.position;
-  desc : 'a;
-}
+type loc = Location.t
 
-let posn { posn = p; desc = _ } = p
-let desc { posn = _; desc = d } = d
+type id =
+  loc * string
 
-type _ref =
-  | Aref_name of string pos
-  | Aref_field of _ref pos * string pos
-  | Aref_index of _ref pos * exp pos
-
-and binop =
-  | Add | Times | Eq | Minus | And | Or | Div
+type binop =
+    Add | Times | Eq | Minus | And | Or | Div
   | Neq | Lt | Le | Ge | Gt
 
-and unaryop =
-  Neg
+type unaryop =
+    Neg
+
+type var =
+    PNameVar of loc * id
+  | PFieldVar of loc * var * id
+  | PIndexVar of loc * var * exp
 
 and exp =
-  | Aexp_bin of exp pos * binop * exp pos
-  | Aexp_unary of unaryop * exp pos
-  | Aexp_int of int
-  | Aexp_str of string
-  | Aexp_set of _ref pos * exp pos
-  | Aexp_ref of _ref pos
-  | Aexp_call of string pos * exp pos list
-  | Aexp_seq of exp pos list
-  | Aexp_let of dec pos list * exp pos list
-  | Aexp_if of exp pos * exp pos * exp pos option
-  | Aexp_nil
-  | Aexp_break
-  | Aexp_while of exp pos * exp pos
-  | Aexp_for of string * exp pos * exp pos * exp pos
-  | Aexp_array of string pos * exp pos * exp pos
-  | Aexp_record of string pos * (string * exp pos) list
+    PBinExp of loc * exp * binop * exp
+  | PUnaryExp of loc * unaryop * exp
+  | PIntExp of loc * int
+  | PStringExp of loc * string
+  | PAssignExp of loc * var * exp
+  | PVarExp of loc * var
+  | PCallExp of loc * id * exp list
+  | PUnitExp of loc
+  | PSeqExp of loc * exp * exp
+  | PLetExp of loc * dec * exp
+  | PIfExp of loc * exp * exp * exp option
+  | PNilExp of loc
+  | PBreakExp of loc
+  | PWhileExp of loc * exp * exp
+  | PForExp of loc * id * exp * exp * exp
+  | PArrayExp of loc * id * exp * exp
+  | PRecordExp of loc * id * (id * exp) list
 
 and dec =
-  | Adec_var of string * string pos option * exp pos
-  | Adec_typ of (string * typ) list
-  | Adec_fun of (string * (string * string pos) list * string pos option * exp pos) list
+    PVarDec of loc * (id * id option * exp)
+  | PTypeDec of loc * (id * typ) list
+  | PFunctionDec of loc * (id * (id * id) list * id option * exp) list
 
 and typ =
-  | Atyp_record of (string * string pos) list
-  | Atyp_array of typ
-  | Atyp_alias of string
+    PRecordTyp of loc * (id * id) list
+  | PArrayTyp of loc * typ
+  | PNameTyp of loc * id
+
+let loc_exp =
+  function
+    PBinExp (loc, _, _, _)
+  | PUnaryExp (loc, _, _)
+  | PIntExp (loc, _)
+  | PStringExp (loc, _)
+  | PAssignExp (loc, _, _)
+  | PVarExp (loc, _)
+  | PCallExp (loc, _, _)
+  | PUnitExp loc
+  | PSeqExp (loc, _, _)
+  | PLetExp (loc, _, _)
+  | PIfExp (loc, _, _, _)
+  | PNilExp loc
+  | PBreakExp loc
+  | PWhileExp (loc, _, _)
+  | PForExp (loc, _, _, _, _)
+  | PArrayExp (loc, _, _, _)
+  | PRecordExp (loc, _, _) -> loc
+
+let loc_var =
+  function
+    PNameVar (loc, _)
+  | PFieldVar (loc, _, _)
+  | PIndexVar (loc, _, _) -> loc
+
+let loc_dec =
+  function
+    PVarDec (loc, _)
+  | PTypeDec (loc, _)
+  | PFunctionDec (loc, _) -> loc
