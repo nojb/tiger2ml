@@ -9,10 +9,10 @@ let map_default f x = function
     Some a -> f a
   | None -> x
 
-type var_kind =
+type mutable_flag =
     Assigned
   | Immutable
-  | NonAssigned
+  | NotAssigned
 
 type exp =
     TIntExp of int
@@ -29,12 +29,12 @@ type exp =
   | TVarExp of var
   | TAssignExp of var * exp
   | TArrayExp of exp * exp
-  | TLetExp of string * exp * var_kind ref * exp
-  | TLetRecExp of (string * (string * var_kind ref) list * exp) list * exp
+  | TLetExp of string * exp * mutable_flag * exp
+  | TLetRecExp of (string * (string * mutable_flag) list * exp) list * exp
   | TRecordExp of (string * exp) list
 
 and var =
-    TNameVar of string * var_kind ref
+    TNameVar of string * mutable_flag ref
   | TFieldVar of var * string
   | TIndexVar of var * exp
 
@@ -56,7 +56,7 @@ let new_type_id () =
 module SMap = Map.Make (String)
 
 type value =
-  | Var of typ * var_kind ref
+  | Var of typ * mutable_flag ref
   | Fun of typ list * typ
 
 type env = {
@@ -358,10 +358,10 @@ and dec env d e =
             find_typ env t
       in
       if eq_typ env vart initt then 
-        let mut = ref NonAssigned in
-        let env = add_var env name vart mut in
+        let mf = ref NotAssigned in
+        let env = add_var env name vart mf in
         let t, e = exp env e in
-        t, TLetExp (name, init1, mut, e)
+        t, TLetExp (name, init1, !mf, e)
       else
         error (loc_exp init) "type mismatch in variable declaration"
   | PTypeDec (_, typs) ->

@@ -38,16 +38,22 @@ let rec expr =
       E.sequence (expr e1) (expr e2)
   | TLetExp (id, init, mut, e) ->
       let r, d =
-        if !mut = Assigned then
-          Nonrecursive, [P.var (Location.mknoloc id), E.apply_nolabs (E.lid "ref") [expr init]]
-        else
-          Nonrecursive, [P.var (Location.mknoloc id), expr init]
+        match mut with
+          Assigned ->
+            Nonrecursive, [P.var (Location.mknoloc id), E.apply_nolabs (E.lid "ref") [expr init]]
+        | NotAssigned
+        | Immutable ->
+            Nonrecursive, [P.var (Location.mknoloc id), expr init]
       in
       E.let_ r d (expr e)
-  | TVarExp r ->
-      expr_ref r
-  | TAssignExp (r, e) ->
-      transl_assign r e
+  | TVarExp v ->
+      var v
+  | TAssignExp (TNameVar (name, _), e) ->
+      E.apply_nolabs (E.lid ":=") [E.lid name; expr e]
+  (* | TAssignExp (TFieldVar (v, name), e) -> *)
+  (*     fprintf out "%a.%s<-(%a)" transl_ref r (ident2ocaml name) transl e *)
+  | TAssignExp (TIndexVar (v, e'), e) ->
+      E.apply_nolabs (E.lid "Array.set") [var v; expr e'; expr e]
   | TForExp (index, start, finish, body, false) ->
       E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body)
   | TForExp (index, start, finish, body, true) ->
@@ -93,7 +99,7 @@ let rec expr =
       E.try_ (E.while_ (expr e1) (expr e2))
         [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
 
-and expr_ref =
+and var =
   function
     TNameVar (s, mut) ->
       if !mut = Assigned then
@@ -105,8 +111,8 @@ and expr_ref =
   (*     transl_ref out r; *)
   (*     fprintf out ")."; *)
   (*     fprintf out "%s@]" (ident2ocaml name) *)
-  | TIndexVar (r, index) ->
-      E.apply_nolabs (E.lid "Array.get") [expr_ref r; expr index]
+  | TIndexVar (v, e) ->
+      E.apply_nolabs (E.lid "Array.get") [var v; expr e]
 
 (* and transl_fundec out = function *)
 (*   | (name, [], body) -> *)
@@ -124,15 +130,6 @@ and expr_ref =
 (*             fprintf out "let@ %s=ref@ %s@ in@\n" name name) *)
 (*         args; *)
 (*       fprintf out "@[<2>%a@]@\n" transl body *)
-
-and transl_assign r e =
-  match r with
-    TNameVar (name, _) ->
-      E.apply_nolabs (E.lid ":=") [E.lid name; expr e]
-  (* | Tref_field (r, name) -> *)
-  (*     fprintf out "%a.%s<-(%a)" transl_ref r (ident2ocaml name) transl e *)
-  | TIndexVar (r, e') ->
-      E.apply_nolabs (E.lid "Array.set") [expr e'; expr e]
 
 let emit_ocaml e =
   let e = expr e in
