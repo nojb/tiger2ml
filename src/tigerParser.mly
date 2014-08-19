@@ -13,7 +13,7 @@
    PERFORMANCE OF THIS SOFTWARE. */
 
 %{
-open Syntax
+open TigerSyntax
 
 let loc_nth i =
   { Location.loc_start = Parsing.rhs_start_pos i;
@@ -90,9 +90,7 @@ let merge_loc loc1 loc2 =
 
 %start program
 
-%type <Syntax.exp> program
-%type <Syntax.var> var
-%type <Syntax.exp> exp
+%type <TigerSyntax.exp> program
 
 %%
 
@@ -193,7 +191,7 @@ exp
   | IF exp THEN exp ELSE exp
       { PIfExp (loc (), $2, $4, Some $6) }
   | error
-      { Error.error (loc ()) Error.BadParse }
+      { TigerError.error (loc ()) TigerError.BadParse }
   ;
 
 decs

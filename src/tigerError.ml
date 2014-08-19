@@ -13,7 +13,7 @@
    PERFORMANCE OF THIS SOFTWARE. *)
 
 open Format
-open Syntax
+open TigerSyntax
 
 type error =
     TypeMismatch

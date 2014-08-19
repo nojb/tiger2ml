@@ -13,7 +13,7 @@
    PERFORMANCE OF THIS SOFTWARE. *)
 
 (* open Syntax *)
-open Typecheck
+open TigerTyping
 
 open Ast_mapper
 open Parsetree
@@ -83,7 +83,7 @@ let rec expr =
                 (fun (a, m) e ->
                    let e = E.function_ "" None [P.var (Location.mknoloc a), e] in
                    match m with
-                     Typecheck.Mutable m when !m ->
+                     TigerTyping.Mutable m when !m ->
                        E.let_ Nonrecursive [P.var (Location.mknoloc a), E.apply_nolabs (E.lid "ref") [E.lid a]] e
                    | _ ->
                        e)

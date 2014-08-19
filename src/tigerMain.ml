@@ -13,25 +13,25 @@
    PERFORMANCE OF THIS SOFTWARE. *)
 
 open Format
-open Error
+open TigerError
 
 let get_lexbuf () =
   if Array.length Sys.argv = 1 then
     Lexing.from_channel stdin
   else begin
-    Syntax.currfilename := Sys.argv.(1);
+    TigerSyntax.currfilename := Sys.argv.(1);
     Lexing.from_channel (open_in Sys.argv.(1))
   end
 
 let _ =
   try
     let lexbuf = get_lexbuf () in
-    let prg = Parser.program Lexer.token lexbuf in
-    let (_, typedprg) = Typecheck.exp Typecheck.std_env prg in
-    Transl.emit_ocaml typedprg
+    let prg = TigerParser.program TigerLexer.token lexbuf in
+    let (_, typedprg) = TigerTyping.exp TigerTyping.std_env prg in
+    TigerEmit.emit_ocaml typedprg
   with
     Error (loc, err) ->
-      eprintf "%a: %a@." Location.print loc Error.report err
+      eprintf "%a: %a@." Location.print loc TigerError.report err
   | Parsing.Parse_error ->
       eprintf "Parser error (where?). Terminating.@."
   | Failure e ->

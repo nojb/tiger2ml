@@ -13,7 +13,7 @@
    PERFORMANCE OF THIS SOFTWARE. *)
 
 {
-open Parser
+open TigerParser
 
 let str_buf =
   Buffer.create 100

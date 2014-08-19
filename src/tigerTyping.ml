@@ -12,8 +12,8 @@
    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
    PERFORMANCE OF THIS SOFTWARE. *)
 
-open Syntax
-open Error
+open TigerSyntax
+open TigerError
 
 let map_default f x = function
     Some a -> f a
