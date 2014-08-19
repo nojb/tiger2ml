@@ -204,6 +204,23 @@ let rec var env =
             error (loc_var v) "variable is not of record type"
       end
 
+and int_exp env e =
+  let t, e' = exp env e in
+  if eq_typ env t TIntTyp then
+    e'
+  else
+    error (loc_exp e) "INT expected"
+
+and bool_exp env e =
+  int_exp env e (* FIXME *)
+
+and unit_exp env e =
+  let t, e' = exp env e in
+  if eq_typ env t TUnitTyp then
+    e'
+  else
+    error (loc_exp e) "UNIT expected"
+
 and exp env =
   function
     PIntExp (_, n) ->
@@ -228,37 +245,26 @@ and exp env =
         error loc "illegal BREAK"
   | PBinExp (_, e1, op, e2) ->
       typecheck_bin env e1 op e2
-  | PUnaryExp (_, op, e) ->
-      typecheck_unary env op e
-  | PIfExp (_, e1, e2, e3) ->
-      let e1t, e1c = exp env e1 in
-      if eq_typ env e1t TIntTyp then
-        let (e2t,e2c) = exp env e2 in
-        match e3 with
-          None ->
-            if eq_typ env e2t TUnitTyp then
-              TUnitTyp, TIfExp (e1c, e2c, None)
-            else
-              error (loc_exp e2) "then-part of if-then should be void valued"
-        | Some e3 ->
-            let e3t, e3c = exp env e3 in
-            if eq_typ env e2t e3t then
-              e2t, TIfExp (e1c, e2c, Some e3c)
-            else
-              error (loc_exp e3) "then-part and else-part should have the same type"
+  | PUnaryExp (_, Neg, e) ->
+      let e = int_exp env e in
+      TIntTyp, assert false (* Texp_bin_int (Texp_int 0, Minus, ec) *)
+  | PIfExp (_, e1, e2, None) ->
+      let e1 = int_exp env e1 in
+      let e2 = unit_exp env e2 in
+      TUnitTyp, TIfExp (e1, e2, None)
+  | PIfExp (_, e1, e2, Some e3) ->
+      let e1 = bool_exp env e1 in
+      let e2t, e2c = exp env e2 in
+      let e3t, e3c = exp env e3 in
+      if eq_typ env e2t e3t then
+        e2t, TIfExp (e1, e2c, Some e3c)
       else
-        error (loc_exp e1) "condition in if expression should be integer valued"
+        error (loc_exp e3) "then-part and else-part should have the same type"
   | PWhileExp (_, e1, e2) ->
-      let e1t, e1c = exp env e1 in
-      if eq_typ env e1t TIntTyp then
-        let env = enter_loop env in
-        let e2t, e2c = exp env e2 in
-        if eq_typ env e2t TUnitTyp then
-          TUnitTyp, TWhileExp (e1c, e2c, !(env.has_break))
-        else
-          error (loc_exp e2) "body of while loop should return no value"
-      else
-        error (loc_exp e1) "condition of while loop should be integer valued"
+      let e1 = bool_exp env e1 in
+      let env = enter_loop env in
+      let e2 = unit_exp env e2 in
+      TUnitTyp, TWhileExp (e1, e2, !(env.has_break))
   | PCallExp (_, (loc, name as id), el) ->
       begin
         let argt, t = find_fun env id in
@@ -272,8 +278,8 @@ and exp env =
           Invalid_argument _ -> error loc "incorrect number of parameters"
       end
   | PAssignExp (_, v, e) ->
-      let (rt, rc) = var env v in
-      let (et, ec) = exp env e in
+      let rt, rc = var env v in
+      let et, ec = exp env e in
       if eq_typ env rt et then
         begin
           begin
@@ -294,30 +300,18 @@ and exp env =
   | PLetExp (_, d, e) ->
       dec env d e
   | PForExp (_, (_, index), start, finish, body) ->
-      let startt, startc = exp env start in
-      let finisht, finishc = exp env finish in
+      let start = int_exp env start in
+      let finish = int_exp env finish in
       let env = add_var env index TIntTyp (ref Immutable) in
       let env = enter_loop env in
-      let bodyt, bodyc = exp env body in
-      if eq_typ env startt TIntTyp then
-        if eq_typ env finisht TIntTyp then
-          if eq_typ env bodyt TUnitTyp then
-            TUnitTyp, TForExp (index, startc, finishc, bodyc, !(env.has_break))
-          else
-            error (loc_exp body) "body of for loop should return void"
-        else
-          error (loc_exp finish) "end expression in for loop should be integer valued"
-      else
-        error (loc_exp start) "start expression in for loop should be integer valued"
+      let body = unit_exp env body in
+      TUnitTyp, TForExp (index, start, finish, body, !(env.has_break))
   | PArrayExp (_, typid, size, init) ->
-      let sizet, sizec = exp env size in
+      let size = int_exp env size in
       let initt, initc = exp env init in
       let tid, typ = find_array_typ env typid in
       if eq_typ env typ initt then
-        if eq_typ env sizet TIntTyp then
-          TArrayTyp (tid, typ), TArrayExp (sizec, initc)
-        else
-          error (loc_exp size) "size expression not of integer type"
+        TArrayTyp (tid, typ), TArrayExp (size, initc)
       else
         error (loc_exp init) "init expression does not match array def"
   | PRecordExp (_, typid, fields) ->
@@ -335,13 +329,6 @@ and exp env =
                error (loc_exp f2init) "field name mismatch") t fields
       in
       TRecordTyp (tid, t), TRecordExp flds
-
-and typecheck_unary env Neg e =
-  let et, ec = exp env e in
-  if eq_typ env et TIntTyp then
-    TIntTyp, assert false (* Texp_bin_int (Texp_int 0, Minus, ec) *)
-  else
-    error (loc_exp e) "unary negation requires integer valued exp"
 
 and dec env d e =
   match d with
