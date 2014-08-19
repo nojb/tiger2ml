@@ -18,7 +18,6 @@ open Typecheck
 open Ast_mapper
 open Parsetree
 open Asttypes
-open Longident
   
 (* let ident2ocaml s = "_" ^ s *)
 
@@ -31,10 +30,23 @@ open Longident
 (*   | Gt -> ">" | Le -> "<=" | Lt -> "<" *)
 (*   | _ -> assert false *)
 
-let map_opt f = function None -> None | Some x -> Some (f x)
+let map_opt f =
+  function
+    None ->
+      None
+  | Some x ->
+      Some (f x)
 
-let mkident ?(loc = Location.none)  s =
+let mkident ?(loc = Location.none) s =
   Location.mkloc (Longident.parse s) loc
+
+let rec typ =
+  function
+    TIntTyp -> T.constr (mkident "int") []
+  | TStringTyp -> T.constr (mkident "string") []
+  | TUnitTyp -> T.constr (mkident "unit") []
+  | TArrayTyp t -> T.constr (mkident "array") [ typ t ]
+  | TAnyTyp -> invalid_arg "emit_type"
 
 let rec expr =
   function

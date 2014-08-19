@@ -47,3 +47,5 @@ let _not n =
 
 let _exit n =
   ignore (exit n)
+
+exception Nil of int
