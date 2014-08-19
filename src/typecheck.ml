@@ -93,7 +93,7 @@ let find_typ env (loc, name) =
   try
     SMap.find name env.types
   with
-    Not_found -> error loc "type not found"
+    Not_found -> error loc TypeNotFound
 
 let rec resolve_typ env loc = function
   | TAliasTyp s -> resolve_typ env loc (find_typ env (loc, s))
@@ -105,9 +105,9 @@ let find_var env (loc, name) =
       Var (t, mut) ->
         (t, mut)
     | _ ->
-        error loc "should be variable, is function"
+        raise Not_found
   with
-    Not_found -> error loc "var not found"
+    Not_found -> error loc VariableNotFound
 
 let rec find_record_typ env (loc, name) =
   try
@@ -117,9 +117,9 @@ let rec find_record_typ env (loc, name) =
     | TAliasTyp s2 ->
         find_record_typ env (loc, s2)
     | _ ->
-        error loc "var not of record type"
+        error loc RecordTypeExpected
   with
-    Not_found -> error loc "type not found"
+    Not_found -> error loc TypeNotFound
 
 let rec find_array_typ env (loc, name) =
   try
@@ -129,18 +129,19 @@ let rec find_array_typ env (loc, name) =
     | TAliasTyp s2 ->
         find_array_typ env (loc, s2)
     | _ ->
-        error loc "var not of array type"
+        error loc ArrayTypeExpected
   with
-    Not_found -> error loc "type not found"
+    Not_found -> error loc TypeNotFound
 
 let find_fun env (loc, name) =
   try
     match SMap.find name env.values with
       Fun (argt, t) ->
         argt, t
-    | _ -> error loc "should be function, is variable"
+    | _ ->
+        raise Not_found
   with
-    Not_found -> error loc "fun not found"
+    Not_found -> error loc FunctionNotFound
 
 let add_var env name t mut =
   { env with values = SMap.add name (Var (t, mut)) env.values }
@@ -197,9 +198,9 @@ let rec var env =
             if eq_typ env indext TIntTyp then
               resolve_typ env (loc_var v) t, TIndexVar (rc, indexc)
             else
-              error (loc_exp index) "index expression is not integer valued"
+              error (loc_exp index) TypeMismatch
         | _ ->
-            error (loc_var v) "variable is not of array type"
+            error (loc_var v) ArrayExpected
       end
   | PFieldVar (_, v, (loc, name)) ->
       begin
@@ -211,10 +212,10 @@ let rec var env =
                 let t = List.assoc name fields in
                 resolve_typ env loc t, TFieldVar (rc, name)
               with
-                Not_found -> error loc "non-existent field"
+                Not_found -> error loc FieldNotFound
             end
         | _ ->
-            error (loc_var v) "variable is not of record type"
+            error (loc_var v) RecordExpected
       end
 
 and int_exp env e =
@@ -222,7 +223,7 @@ and int_exp env e =
   if eq_typ env t TIntTyp then
     e'
   else
-    error (loc_exp e) "INT expected"
+    error (loc_exp e) IntExpected
 
 and bool_exp env e =
   int_exp env e (* FIXME *)
@@ -232,7 +233,18 @@ and unit_exp env e =
   if eq_typ env t TUnitTyp then
     e'
   else
-    error (loc_exp e) "UNIT expected"
+    error (loc_exp e) UnitExpected
+
+and nil_exp env t e =
+  match e with
+    PNilExp _ ->
+      (* if is_record t FIXME *) TNilExp
+  | _ as e ->
+      let t1, e1 = exp env e in
+      if eq_typ env t t1 then
+        e1
+      else
+        error (loc_exp e) TypeMismatch
 
 and exp env =
   function
@@ -247,7 +259,7 @@ and exp env =
       let t, e2 = exp env e2 in
       t, TSeqExp (e1, e2)
   | PNilExp p ->
-      error p "illegal NIL"
+      error p BadNil
   | PBreakExp loc ->
       if env.in_loop then
         begin
@@ -255,7 +267,7 @@ and exp env =
           TUnitTyp, TBreakExp
         end
       else
-        error loc "illegal BREAK"
+        error loc BadBreak
   | PBinExp (_, e1, op, e2) ->
       typecheck_bin env e1 op e2
   | PUnaryExp (_, Neg, e) ->
@@ -272,7 +284,7 @@ and exp env =
       if eq_typ env e2t e3t then
         e2t, TIfExp (e1, e2c, Some e3c)
       else
-        error (loc_exp e3) "then-part and else-part should have the same type"
+        error (loc_exp e3) TypeMismatch
   | PWhileExp (_, e1, e2) ->
       let e1 = bool_exp env e1 in
       let env = enter_loop env in
@@ -286,9 +298,9 @@ and exp env =
           if List.for_all2 (fun t1 (t2, _) -> eq_typ env t1 t2) argt args2 then
             resolve_typ env loc t, TCallExp (name, List.map (fun (_, x) -> x) args2)
           else
-            error loc "type mismatch in parameter list"
+            error loc TypeMismatch
         with
-          Invalid_argument _ -> error loc "incorrect number of parameters"
+          Invalid_argument _ -> error loc BadArgumentCount
       end
   | PAssignExp (_, v, e) ->
       let rt, rc = var env v in
@@ -298,7 +310,7 @@ and exp env =
           begin
             match rc with
               TNameVar (_, Immutable) ->
-                error (loc_exp e) "immutable variable"
+                error (loc_exp e) ImmutableAssignment
             | TNameVar (_, Mutable m) ->
                 m := true
             | _ -> ()
@@ -306,7 +318,7 @@ and exp env =
           TUnitTyp, TAssignExp (rc, ec)
         end
       else
-        error (loc_exp e) "type mismatch in assignment"
+        error (loc_exp e) TypeMismatch
   | PVarExp (_, v) ->
       let rt, rc = var env v in
       rt, TVarExp rc
@@ -326,7 +338,7 @@ and exp env =
       if eq_typ env typ initt then
         TArrayTyp (tid, typ), TArrayExp (size, initc)
       else
-        error (loc_exp init) "init expression does not match array def"
+        error (loc_exp init) TypeMismatch
   | PRecordExp (_, typid, fields) ->
       let tid, t = find_record_typ env typid in
       let flds =
@@ -337,33 +349,27 @@ and exp env =
                if eq_typ env f2initt f1tn then
                  f2n, f2initc
                else
-                 error (loc_exp f2init) "field type mismatch"
+                 error (loc_exp f2init) TypeMismatch
              else
-               error (loc_exp f2init) "field name mismatch") t fields
+               error (loc_exp f2init) BadFieldName) t fields
       in
       TRecordTyp (tid, t), TRecordExp flds
 
 and dec env d e =
   match d with
-    PVarDec (_, ((_, name), typid, init)) ->
+    PVarDec (_, ((_, name), None, init)) ->
       let initt, init1 = exp env init in
-      let vart =
-        match typid with
-          None ->
-            if eq_typ env initt TNilTyp then
-              error (loc_exp init) "can't determine variable type"
-            else
-              initt
-        | Some t ->
-            find_typ env t
-      in
-      if eq_typ env vart initt then 
-        let mf = Mutable (ref false) in
-        let env = add_var env name vart mf in
-        let t, e = exp env e in
-        t, TLetExp (name, init1, mf, e)
-      else
-        error (loc_exp init) "type mismatch in variable declaration"
+      let mf = Mutable (ref false) in
+      let env = add_var env name initt mf in
+      let t, e = exp env e in
+      t, TLetExp (name, init1, mf, e)
+  | PVarDec (_, ((_, name), Some t, init)) ->
+      let vart = find_typ env t in
+      let init1 = nil_exp env vart init in
+      let mf = Mutable (ref false) in
+      let env = add_var env name vart mf in
+      let t, e = exp env e in
+      t, TLetExp (name, init1, mf, e)
   | PTypeDec (_, typs) ->
       assert false
       (* List.fold_left *)

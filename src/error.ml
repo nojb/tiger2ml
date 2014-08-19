@@ -12,12 +12,69 @@
    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
    PERFORMANCE OF THIS SOFTWARE. *)
 
+open Format
 open Syntax
 
-exception Error of Location.t * string
+type error =
+    TypeMismatch
+  | ImmutableAssignment
+  | BadArgumentCount
+  | BadFieldName
+  | BadNil
+  | TypeNotFound
+  | VariableNotFound
+  | ArrayTypeExpected
+  | RecordTypeExpected
+  | FunctionNotFound
+  | ArrayExpected
+  | FieldNotFound
+  | RecordExpected
+  | IntExpected
+  | UnitExpected
+  | BadBreak
+  | BadParse
 
-let error p s =
-  raise (Error (p, s))
+exception Error of Location.t * error
+
+let error loc err =
+  raise (Error (loc, err))
+
+let report ppf =
+  function
+    TypeMismatch ->
+      fprintf ppf "Type mismatch"
+  | ImmutableAssignment ->
+      fprintf ppf "Illegal assignment to an immutable variable"
+  | BadArgumentCount ->
+      fprintf ppf "Wrong number of arguments"
+  | BadFieldName ->
+      fprintf ppf "Wrong field name"
+  | BadNil ->
+      fprintf ppf "Ambiguous usage of `nil'"
+  | TypeNotFound ->
+      fprintf ppf "Type not found"
+  | VariableNotFound ->
+      fprintf ppf "Variable not found"
+  | ArrayTypeExpected ->
+      fprintf ppf "Array type name expected"
+  | RecordTypeExpected ->
+      fprintf ppf "Record type name expected"
+  | FunctionNotFound ->
+      fprintf ppf "Function not found"
+  | ArrayExpected ->
+      fprintf ppf "Array expression expected"
+  | FieldNotFound ->
+      fprintf ppf "Field not found"
+  | RecordExpected ->
+      fprintf ppf "Record expression expected"
+  | IntExpected ->
+      fprintf ppf "integer expression expected"
+  | UnitExpected ->
+      fprintf ppf "unit expression expected"
+  | BadBreak ->
+      fprintf ppf "Illegal usage of `break'"
+  | BadParse ->
+      fprintf ppf "Parsing error"
 
 (*let get_file_line p =
   let ic = open_in p.pos_filename in begin

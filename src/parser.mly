@@ -193,7 +193,7 @@ exp
   | IF exp THEN exp ELSE exp
       { PIfExp (loc (), $2, $4, Some $6) }
   | error
-      { Error.error (loc ()) "parser error" }
+      { Error.error (loc ()) Error.BadParse }
   ;
 
 decs

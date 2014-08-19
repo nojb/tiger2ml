@@ -30,8 +30,8 @@ let _ =
     let (_, typedprg) = Typecheck.exp Typecheck.std_env prg in
     Transl.emit_ocaml typedprg
   with
-    Error (p, s) ->
-      eprintf "%a: %s@." Location.print p s
+    Error (loc, err) ->
+      eprintf "%a: %a@." Location.print loc Error.report err
   | Parsing.Parse_error ->
       eprintf "Parser error (where?). Terminating.@."
   | Failure e ->
