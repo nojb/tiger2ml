@@ -31,8 +31,8 @@ let _ =
     TigerEmit.emit_ocaml typedprg
   with
     Error (loc, err) ->
-      eprintf "%a: %a@." Location.print loc TigerError.report err
+      eprintf "%aError: %a.@." Location.print loc TigerError.report err
   | Parsing.Parse_error ->
-      eprintf "Parser error (where?). Terminating.@."
+      eprintf "Parser error (where?).@."
   | Failure e ->
       eprintf "Internal error: %s@." e

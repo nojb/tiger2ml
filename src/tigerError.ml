@@ -17,17 +17,17 @@ open TigerSyntax
 
 type error =
     TypeMismatch
-  | ImmutableAssignment
+  | ImmutableAssignment of string
   | BadArgumentCount
   | BadFieldName
   | BadNil
-  | TypeNotFound
-  | VariableNotFound
+  | TypeNotFound of string
+  | VariableNotFound of string
   | ArrayTypeExpected
   | RecordTypeExpected
-  | FunctionNotFound
+  | FunctionNotFound of string
   | ArrayExpected
-  | FieldNotFound
+  | FieldNotFound of string
   | RecordExpected
   | IntExpected
   | UnitExpected
@@ -44,46 +44,37 @@ let report ppf =
   function
     TypeMismatch ->
       fprintf ppf "Type mismatch"
-  | ImmutableAssignment ->
-      fprintf ppf "Illegal assignment to an immutable variable"
+  | ImmutableAssignment name ->
+      fprintf ppf "Variable %s cannot be assigned to" name
   | BadArgumentCount ->
       fprintf ppf "Wrong number of arguments"
   | BadFieldName ->
       fprintf ppf "Wrong field name"
   | BadNil ->
-      fprintf ppf "Ambiguous usage of `nil'"
-  | TypeNotFound ->
-      fprintf ppf "Type not found"
-  | VariableNotFound ->
-      fprintf ppf "Variable not found"
+      fprintf ppf "Illegal use of `nil'; type cannot be determined"
+  | TypeNotFound name ->
+      fprintf ppf "Type %s not found" name
+  | VariableNotFound name ->
+      fprintf ppf "Variable %s not found" name
   | ArrayTypeExpected ->
       fprintf ppf "Array type name expected"
   | RecordTypeExpected ->
       fprintf ppf "Record type name expected"
-  | FunctionNotFound ->
-      fprintf ppf "Function not found"
+  | FunctionNotFound name ->
+      fprintf ppf "Function %s not found" name
   | ArrayExpected ->
       fprintf ppf "Array expression expected"
-  | FieldNotFound ->
-      fprintf ppf "Field not found"
+  | FieldNotFound name ->
+      fprintf ppf "Field %s not found" name
   | RecordExpected ->
       fprintf ppf "Record expression expected"
   | IntExpected ->
-      fprintf ppf "integer expression expected"
+      fprintf ppf "Integer expression expected"
   | UnitExpected ->
-      fprintf ppf "unit expression expected"
+      fprintf ppf "Unit expression expected"
   | BadBreak ->
-      fprintf ppf "Illegal usage of `break'"
+      fprintf ppf "Illegal use of `break'; can only appear inside a loop"
   | BadParse ->
       fprintf ppf "Parsing error"
   | IntOrStringExpected ->
       fprintf ppf "Int or String expected"
-
-(*let get_file_line p =
-  let ic = open_in p.pos_filename in begin
-    seek_in ic (p.pos_offset-p.pos_column);
-    let line = input_line ic in begin
-      close_in ic;
-      line
-    end
-  end*)

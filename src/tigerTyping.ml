@@ -91,7 +91,7 @@ let find_type env (loc, name) =
     SMap.find name env.types
   with
     Not_found ->
-      error loc TypeNotFound
+      error loc (TypeNotFound name)
 ;;
 
 let find_type_opt env (_, name) =
@@ -124,10 +124,10 @@ let find_var env (loc, name) =
         raise Not_found
   with
     Not_found ->
-      error loc VariableNotFound
+      error loc (VariableNotFound name)
 ;;
 
-let rec find_record_typ env (loc, name) =
+let rec find_record_type env (loc, name) =
   try
     match actual_type (SMap.find name env.types) with
       TRecordTyp flds as t ->
@@ -136,10 +136,10 @@ let rec find_record_typ env (loc, name) =
         error loc RecordTypeExpected
   with
     Not_found ->
-      error loc TypeNotFound
+      error loc (TypeNotFound name)
 ;;
 
-let rec find_array_typ env (loc, name) =
+let rec find_array_type env (loc, name) =
   try
     match actual_type (SMap.find name env.types) with
       TArrayTyp t1 as t ->
@@ -148,7 +148,7 @@ let rec find_array_typ env (loc, name) =
         error loc ArrayTypeExpected
   with
     Not_found ->
-      error loc TypeNotFound
+      error loc (TypeNotFound name)
 ;;
 
 let find_fun env (loc, name) =
@@ -160,7 +160,7 @@ let find_fun env (loc, name) =
         raise Not_found
   with
     Not_found ->
-      error loc FunctionNotFound
+      error loc (FunctionNotFound name)
 ;;
 
 let add_var env name t mut =
@@ -240,7 +240,7 @@ let rec var env =
                 let t = List.assoc name flds in
                 t, TFieldVar (rc, name)
               with
-                Not_found -> error loc FieldNotFound
+                Not_found -> error loc (FieldNotFound name)
             end
         | _ ->
             error (loc_var v) RecordExpected
@@ -388,8 +388,8 @@ and exp env =
         begin
           begin
             match rc with
-              TNameVar (_, Immutable) ->
-                error (loc_exp e) ImmutableAssignment
+              TNameVar (name, Immutable) ->
+                error (loc_exp e) (ImmutableAssignment name)
             | TNameVar (_, Mutable m) ->
                 m := true
             | _ -> ()
@@ -413,13 +413,13 @@ and exp env =
   | PArrayExp (_, typid, size, init) ->
       let size = int_exp env size in
       let initt, initc = exp env init in
-      let t, typ = find_array_typ env typid in
+      let t, typ = find_array_type env typid in
       if equal_types typ initt then
         t, TArrayExp (size, initc)
       else
         error (loc_exp init) TypeMismatch
   | PRecordExp (_, typid, fields) ->
-      let t, t1 = find_record_typ env typid in
+      let t, t1 = find_record_type env typid in
       let flds =
         List.map2
           (fun (f1n, f1tn) ((_, f2n), f2init) ->
