@@ -12,12 +12,11 @@ let get_lexbuf () =
 let _ =
   try
     let lexbuf = get_lexbuf () in
-      let prg = Parser.program Lexer.token lexbuf in
-      let (_, typedprg) = Typecheck.exp Typecheck.std_env
-        Typecheck.error_break prg in
-        Transl.emit_ocaml typedprg
+    let prg = Parser.program Lexer.token lexbuf in
+    let (_, typedprg) = Typecheck.exp Typecheck.std_env prg in
+    Transl.emit_ocaml typedprg
   with
-  | Error (p, s) ->
+    Error (p, s) ->
       eprintf "%a: %s@." Location.print p s
   | Parsing.Parse_error ->
       eprintf "Parser error (where?). Terminating.@."

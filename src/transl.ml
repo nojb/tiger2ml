@@ -22,7 +22,8 @@ let map_opt f = function None -> None | Some x -> Some (f x)
 let mkident ?(loc = Location.none)  s =
   {txt = Longident.parse s; loc }
 
-let rec expr = function
+let rec expr =
+  function
     TBreakExp ->
       E.apply_nolabs (E.lid "raise") [E.construct (mkident "Tigerlib.Break") None false]
   | TNilExp ->
@@ -47,9 +48,9 @@ let rec expr = function
       expr_ref r
   | TAssignExp (r, e) ->
       transl_assign r e
-  | TForExp (index, start, finish, body, {contents = false}) ->
+  | TForExp (index, start, finish, body, false) ->
       E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body)
-  | TForExp (index, start, finish, body, {contents = true}) ->
+  | TForExp (index, start, finish, body, true) ->
       E.try_
         (E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body))
         [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
@@ -86,14 +87,15 @@ let rec expr = function
   (*         (name)) transl init)) fields *)
   | TIfExp (e1, e2, e3) ->
       E.ifthenelse (expr e1) (expr e2) (map_opt expr e3)
-  | TWhileExp (e1, e2, {contents = false}) ->
+  | TWhileExp (e1, e2, false) ->
       E.while_ (expr e1) (expr e2)
-  | TWhileExp (e1, e2, {contents = true}) ->
+  | TWhileExp (e1, e2, true) ->
       E.try_ (E.while_ (expr e1) (expr e2))
         [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
 
-and expr_ref = function
-  | TNameVar (s, mut) ->
+and expr_ref =
+  function
+    TNameVar (s, mut) ->
       if !mut = Assigned then
         E.apply_nolabs (E.lid "!") [E.lid s]
       else
@@ -125,7 +127,7 @@ and expr_ref = function
 
 and transl_assign r e =
   match r with
-  | TNameVar (name, _) ->
+    TNameVar (name, _) ->
       E.apply_nolabs (E.lid ":=") [E.lid name; expr e]
   (* | Tref_field (r, name) -> *)
   (*     fprintf out "%a.%s<-(%a)" transl_ref r (ident2ocaml name) transl e *)

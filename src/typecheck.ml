@@ -1,6 +1,10 @@
 open Syntax
 open Error
 
+type loop_flag =
+    InLoop
+  | NoLoop
+
 let map_default f x = function
     Some a -> f a
   | None -> x
@@ -19,8 +23,8 @@ type exp =
   | TUnitExp
   | TSeqExp of exp * exp
   | TIfExp of exp * exp * exp option
-  | TWhileExp of exp * exp * bool ref
-  | TForExp of string * exp * exp * exp * bool ref
+  | TWhileExp of exp * exp * bool
+  | TForExp of string * exp * exp * exp * bool
   | TCallExp of string * exp list
   | TVarExp of var
   | TAssignExp of var * exp
@@ -51,18 +55,25 @@ let new_type_id () =
 
 module SMap = Map.Make (String)
 
-type var_fun_data =
+type value =
   | Var of typ * var_kind ref
   | Fun of typ list * typ
 
 type env = {
-  vars_funs : var_fun_data SMap.t;
+  values : value SMap.t;
   types : typ SMap.t;
+  in_loop : bool;
+  has_break : bool ref
 }
 
-let empty_env = {
-  vars_funs = SMap.empty;
+let enter_loop env =
+  { env with in_loop = true; has_break = ref false }
+
+let empty_env () ={
+  values = SMap.empty;
   types = SMap.empty;
+  in_loop = false;
+  has_break = ref false
 }
 
 let find_typ env (loc, name) =
@@ -77,7 +88,7 @@ let rec resolve_typ env loc = function
 
 let find_var env (loc, name) =
   try
-    match SMap.find name env.vars_funs with
+    match SMap.find name env.values with
       Var (t, mut) ->
         (t, mut)
     | _ ->
@@ -111,7 +122,7 @@ let rec find_array_typ env (loc, name) =
 
 let find_fun env (loc, name) =
   try
-    match SMap.find name env.vars_funs with
+    match SMap.find name env.values with
       Fun (argt, t) ->
         argt, t
     | _ -> error loc "should be function, is variable"
@@ -119,7 +130,7 @@ let find_fun env (loc, name) =
     Not_found -> error loc "fun not found"
 
 let add_var env name t mut =
-  { env with vars_funs = SMap.add name (Var (t, mut)) env.vars_funs }
+  { env with values = SMap.add name (Var (t, mut)) env.values }
 
 let add_fun env name args =
   let rec loop r =
@@ -129,7 +140,7 @@ let add_fun env name args =
     | t :: ts -> loop (t :: r) ts
   in
   let argt, t = loop [] args in
-  { env with vars_funs = SMap.add name (Fun (argt, t)) env.vars_funs }
+  { env with values = SMap.add name (Fun (argt, t)) env.values }
 
 let add_typ env name t =
   { env with types = SMap.add name t env.types }
@@ -159,20 +170,15 @@ let rec typecheck_typ env = function
   | PRecordTyp (_, fields) ->
       TRecordTyp (new_type_id (), List.map (fun ((_, name), typid) -> name, find_typ env typid) fields)
 
-let error_break loc =
-  error loc "break outside for/while loop"
-
-(* val typecheck :: env -> exp pos -> typ * texp *)
-
-let rec var env breaks =
+let rec var env =
   function
     PNameVar (_, (loc, name as id)) ->
       let t, mut = find_var env id in
       resolve_typ env loc t, TNameVar (name, mut)
   | PIndexVar (_, v, index) ->
       begin
-        let rt, rc = var env breaks v in
-        let indext, indexc = exp env breaks index in
+        let rt, rc = var env v in
+        let indext, indexc = exp env index in
         match rt with
           TArrayTyp (_,t) ->
             if eq_typ env indext TIntTyp then
@@ -184,7 +190,7 @@ let rec var env breaks =
       end
   | PFieldVar (_, v, (loc, name)) ->
       begin
-        let rt, rc = var env breaks v in
+        let rt, rc = var env v in
         match rt with
           TRecordTyp (_,fields) ->
             begin
@@ -198,7 +204,7 @@ let rec var env breaks =
             error (loc_var v) "variable is not of record type"
       end
 
-and exp env breaks =
+and exp env =
   function
     PIntExp (_, n) ->
       TIntTyp, TIntExp n
@@ -207,22 +213,27 @@ and exp env breaks =
   | PUnitExp _ ->
       TUnitTyp, TUnitExp
   | PSeqExp (_, e1, e2) ->
-      let _, e1 = exp env breaks e1 in
-      let t, e2 = exp env breaks e2 in
+      let _, e1 = exp env e1 in
+      let t, e2 = exp env e2 in
       t, TSeqExp (e1, e2)
   | PNilExp p ->
-      error p "illegal nil"
-  | PBreakExp p ->
-      breaks p;
-      TUnitTyp, TBreakExp
+      error p "illegal NIL"
+  | PBreakExp loc ->
+      if env.in_loop then
+        begin
+          env.has_break := true;
+          TUnitTyp, TBreakExp
+        end
+      else
+        error loc "illegal BREAK"
   | PBinExp (_, e1, op, e2) ->
-      typecheck_bin env breaks e1 op e2
+      typecheck_bin env e1 op e2
   | PUnaryExp (_, op, e) ->
-      typecheck_unary env breaks op e
+      typecheck_unary env op e
   | PIfExp (_, e1, e2, e3) ->
-      let e1t, e1c = exp env breaks e1 in
+      let e1t, e1c = exp env e1 in
       if eq_typ env e1t TIntTyp then
-        let (e2t,e2c) = exp env breaks e2 in
+        let (e2t,e2c) = exp env e2 in
         match e3 with
           None ->
             if eq_typ env e2t TUnitTyp then
@@ -230,7 +241,7 @@ and exp env breaks =
             else
               error (loc_exp e2) "then-part of if-then should be void valued"
         | Some e3 ->
-            let e3t, e3c = exp env breaks e3 in
+            let e3t, e3c = exp env e3 in
             if eq_typ env e2t e3t then
               e2t, TIfExp (e1c, e2c, Some e3c)
             else
@@ -238,13 +249,12 @@ and exp env breaks =
       else
         error (loc_exp e1) "condition in if expression should be integer valued"
   | PWhileExp (_, e1, e2) ->
-      let e1t, e1c = exp env breaks e1 in
+      let e1t, e1c = exp env e1 in
       if eq_typ env e1t TIntTyp then
-        let does_break = ref false in
-        let breaks _ = does_break := true in
-        let e2t, e2c = exp env breaks e2 in
+        let env = enter_loop env in
+        let e2t, e2c = exp env e2 in
         if eq_typ env e2t TUnitTyp then
-          TUnitTyp, TWhileExp (e1c, e2c, does_break)
+          TUnitTyp, TWhileExp (e1c, e2c, !(env.has_break))
         else
           error (loc_exp e2) "body of while loop should return no value"
       else
@@ -252,7 +262,7 @@ and exp env breaks =
   | PCallExp (_, (loc, name as id), el) ->
       begin
         let argt, t = find_fun env id in
-        let args2 = List.map (exp env breaks) el in
+        let args2 = List.map (exp env) el in
         try
           if List.for_all2 (fun t1 (t2, _) -> eq_typ env t1 t2) argt args2 then
             resolve_typ env loc t, TCallExp (name, List.map (fun (_, x) -> x) args2)
@@ -262,8 +272,8 @@ and exp env breaks =
           Invalid_argument _ -> error loc "incorrect number of parameters"
       end
   | PAssignExp (_, v, e) ->
-      let (rt, rc) = var env breaks v in
-      let (et, ec) = exp env breaks e in
+      let (rt, rc) = var env v in
+      let (et, ec) = exp env e in
       if eq_typ env rt et then
         begin
           begin
@@ -279,20 +289,20 @@ and exp env breaks =
       else
         error (loc_exp e) "type mismatch in assignment"
   | PVarExp (_, v) ->
-      let rt, rc = var env breaks v in
+      let rt, rc = var env v in
       rt, TVarExp rc
   | PLetExp (_, d, e) ->
-      dec env breaks d e
+      dec env d e
   | PForExp (_, (_, index), start, finish, body) ->
-      let startt, startc = exp env breaks start in
-      let finisht, finishc = exp env breaks finish in
-      let does_break = ref false in
-      let breaks _ = does_break := true in
-      let bodyt, bodyc = exp (add_var env index TIntTyp (ref Immutable)) breaks body in
+      let startt, startc = exp env start in
+      let finisht, finishc = exp env finish in
+      let env = add_var env index TIntTyp (ref Immutable) in
+      let env = enter_loop env in
+      let bodyt, bodyc = exp env body in
       if eq_typ env startt TIntTyp then
         if eq_typ env finisht TIntTyp then
           if eq_typ env bodyt TUnitTyp then
-            TUnitTyp, TForExp (index, startc, finishc, bodyc, does_break)
+            TUnitTyp, TForExp (index, startc, finishc, bodyc, !(env.has_break))
           else
             error (loc_exp body) "body of for loop should return void"
         else
@@ -300,8 +310,8 @@ and exp env breaks =
       else
         error (loc_exp start) "start expression in for loop should be integer valued"
   | PArrayExp (_, typid, size, init) ->
-      let sizet, sizec = exp env breaks size in
-      let initt, initc = exp env breaks init in
+      let sizet, sizec = exp env size in
+      let initt, initc = exp env init in
       let tid, typ = find_array_typ env typid in
       if eq_typ env typ initt then
         if eq_typ env sizet TIntTyp then
@@ -316,7 +326,7 @@ and exp env breaks =
         List.map2
           (fun (f1n, f1tn) ((_, f2n), f2init) ->
              if f1n = f2n then
-               let f2initt, f2initc = exp env breaks f2init in
+               let f2initt, f2initc = exp env f2init in
                if eq_typ env f2initt f1tn then
                  f2n, f2initc
                else
@@ -326,17 +336,17 @@ and exp env breaks =
       in
       TRecordTyp (tid, t), TRecordExp flds
 
-and typecheck_unary env breaks Neg e =
-  let et, ec = exp env breaks e in
+and typecheck_unary env Neg e =
+  let et, ec = exp env e in
   if eq_typ env et TIntTyp then
     TIntTyp, assert false (* Texp_bin_int (Texp_int 0, Minus, ec) *)
   else
     error (loc_exp e) "unary negation requires integer valued exp"
 
-and dec env breaks d e =
+and dec env d e =
   match d with
     PVarDec (_, ((_, name), typid, init)) ->
-      let initt, init1 = exp env breaks init in
+      let initt, init1 = exp env init in
       let vart =
         match typid with
           None ->
@@ -350,7 +360,7 @@ and dec env breaks d e =
       if eq_typ env vart initt then 
         let mut = ref NonAssigned in
         let env = add_var env name vart mut in
-        let t, e = exp env breaks e in
+        let t, e = exp env e in
         t, TLetExp (name, init1, mut, e)
       else
         error (loc_exp init) "type mismatch in variable declaration"
@@ -381,10 +391,10 @@ and dec env breaks d e =
       (*                                  error (posn body) "body of function does not match return type" *)
       (*                              end) fl) :: td) *)
          
-and typecheck_bin env breaks e1 op e2 =
+and typecheck_bin env e1 op e2 =
   assert false
-  (* let e1t, e1c = exp env breaks e1 in *)
-  (* let e2t, e2c = exp env breaks e2 in *)
+  (* let e1t, e1c = exp env lf e1 in *)
+  (* let e2t, e2c = exp env lf e2 in *)
   (* match op with *)
   (*   Add | Minus | Times | Div -> *)
   (*     if eq_typ env e1t Ttyp_int then *)
@@ -452,6 +462,7 @@ let std_types = [
 ]
 
 let std_env =
-  let env = List.fold_left (fun env (name, args) -> add_fun env name args) empty_env primitives in
+  let env = empty_env () in
+  let env = List.fold_left (fun env (name, args) -> add_fun env name args) env primitives in
   let env = List.fold_left (fun env (name, t) -> add_typ env name t) env std_types in
   env
