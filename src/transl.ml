@@ -37,13 +37,12 @@ let rec expr = function
       expr a
   | Texp_seq (e :: el) ->
       List.fold_left (fun e1 e2 -> E.sequence e1 (expr e2)) (expr e) el
-  (* | Texp_let (decs, body) -> *)
-  (*     List.iter (transl_dec out) decs; *)
-  (*     transl out body *)
-  (* | Texp_ref r -> *)
-  (*     transl_ref out r *)
-  (* | Texp_set (r, e) -> *)
-  (*     transl_assign out r e *)
+  | Texp_let (ds, body) ->
+      List.fold_right (fun d b -> let f, pl = transl_dec d in E.let_ f pl b) ds (expr body)
+  | Texp_ref r ->
+      expr_ref r
+  | Texp_set (r, e) ->
+      transl_assign r e
   | Texp_for (index, start, finish, body, {contents = false}) ->
       E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body)
   | Texp_for (index, start, finish, body, {contents = true}) ->
@@ -89,23 +88,19 @@ let rec expr = function
       E.try_ (E.while_ (expr e1) (expr e2))
         [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
 
-(* and transl_ref out = function *)
-(*   | Tref_name (s, mut) -> *)
-(*       if !mut = Assigned then *)
-(*         fprintf out "!%s" (ident2ocaml s) *)
-(*       else *)
-(*         fprintf out "%s" (ident2ocaml s) *)
-(*   | Tref_field (r, name) -> *)
-(*       fprintf out "@[Option.get@ ("; *)
-(*       transl_ref out r; *)
-(*       fprintf out ")."; *)
-(*       fprintf out "%s@]" (ident2ocaml name) *)
-(*   | Tref_index (r, index) -> *)
-(*       fprintf out "@["; *)
-(*       transl_ref out r; *)
-(*       fprintf out ".("; *)
-(*       transl out index; *)
-(*       fprintf out ")@]" *)
+and expr_ref = function
+  | Tref_name (s, mut) ->
+      if !mut = Assigned then
+        E.apply_nolabs (E.lid "!") [E.lid s]
+      else
+        E.lid s
+  (* | Tref_field (r, name) -> *)
+  (*     fprintf out "@[Option.get@ ("; *)
+  (*     transl_ref out r; *)
+  (*     fprintf out ")."; *)
+  (*     fprintf out "%s@]" (ident2ocaml name) *)
+  | Tref_index (r, index) ->
+      E.apply_nolabs (E.lid "Array.get") [expr_ref r; expr index]
 
 (* and transl_fundec out = function *)
 (*   | (name, [], body) -> *)
@@ -124,33 +119,30 @@ let rec expr = function
 (*         args; *)
 (*       fprintf out "@[<2>%a@]@\n" transl body *)
 
-(* and transl_dec out = function *)
-(*   | Tdec_var (s, init, mut) -> *)
-(*       if !mut = Assigned then *)
-(*         fprintf out "let@ @[%s@ =@ ref@ " (ident2ocaml s) *)
-(*       else *)
-(*         fprintf out "let@ @[%s@ =@ " (ident2ocaml s); *)
-(*       fprintf out "(%a)@]@ in@\n" transl init *)
-(*   | Tdec_fun (a :: b) -> *)
-(*       fprintf out "@[let@ rec@ %a" transl_fundec a; *)
-(*       let rec loop = function *)
-(*         | [] -> fprintf out "in@]@ " *)
-(*         | a :: b -> *)
-(*             fprintf out "and@ %a" transl_fundec a; *)
-(*             loop b *)
-(*       in loop b *)
-(*   | Tdec_fun [] -> assert false *)
+and transl_dec = function
+  | Tdec_var (s, init, mut) ->
+      if !mut = Assigned then
+        Nonrecursive, [P.var {loc=Location.none; txt=s}, E.apply_nolabs (E.lid "ref") [expr init]]
+      else
+        Nonrecursive, [P.var {loc=Location.none; txt=s}, expr init]
+  (* | Tdec_fun (a :: b) -> *)
+  (*     fprintf out "@[let@ rec@ %a" transl_fundec a; *)
+  (*     let rec loop = function *)
+  (*       | [] -> fprintf out "in@]@ " *)
+  (*       | a :: b -> *)
+  (*           fprintf out "and@ %a" transl_fundec a; *)
+  (*           loop b *)
+  (*     in loop b *)
+  (* | Tdec_fun [] -> assert false *)
 
-(* and transl_assign out r e = *)
-(*   match r with *)
-(*   | Tref_name (name, _) -> *)
-(*       fprintf out "%s:=" (ident2ocaml name); *)
-(*       transl out e *)
-(*   | Tref_field (r, name) -> *)
-(*       fprintf out "%a.%s<-(%a)" transl_ref r (ident2ocaml name) transl e *)
-(*   | Tref_index (r, e') -> *)
-(*       fprintf out "%a.(%a)<-(%a)" *)
-(*         transl_ref r transl e' transl e *)
+and transl_assign r e =
+  match r with
+  | Tref_name (name, _) ->
+      E.apply_nolabs (E.lid ":=") [E.lid name; expr e]
+  (* | Tref_field (r, name) -> *)
+  (*     fprintf out "%a.%s<-(%a)" transl_ref r (ident2ocaml name) transl e *)
+  | Tref_index (r, e') ->
+      E.apply_nolabs (E.lid "Array.set") [expr e'; expr e]
 
 let emit_ocaml e =
   let e = expr e in
