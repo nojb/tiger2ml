@@ -20,7 +20,7 @@ type texp =
   | Texp_nil
   | Texp_break
   | Texp_seq of texp list
-  | Texp_if of texp * texp * texp
+  | Texp_if of texp * texp * texp option
   | Texp_while of texp * texp * bool ref
   | Texp_for of string * texp * texp * texp * bool ref
   | Texp_call of string * texp list
@@ -324,13 +324,13 @@ and typecheck_if env breaks e1 e2 e3 =
       match e3 with
       | None -> begin
         if eq_typ env e2t Ttyp_void then
-          (Ttyp_void, Texp_if (e1c, e2c, Texp_seq []))
+          (Ttyp_void, Texp_if (e1c, e2c, None))
         else error (posn e2) "then-part of if-then should be void valued"
       end
       | Some e3 -> begin
         let (e3t,e3c) = typecheck env breaks e3 in
           if eq_typ env e2t e3t then
-            (e2t, Texp_if (e1c, e2c, e3c))
+            (e2t, Texp_if (e1c, e2c, Some e3c))
           else
             error (posn e3) "then-part and else-part should have the same type"
       end

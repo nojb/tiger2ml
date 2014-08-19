@@ -17,6 +17,8 @@ open Longident
 (*   | Gt -> ">" | Le -> "<=" | Lt -> "<" *)
 (*   | _ -> assert false *)
 
+let map_opt f = function None -> None | Some x -> Some (f x)
+
 let mkident ?(loc = Location.none)  s =
   {txt = Longident.parse s; loc }
 
@@ -88,20 +90,13 @@ let rec expr = function
   (*       (separated (fun out () -> fprintf out ";@ ") *)
   (*       (fun out (name, init) -> fprintf out "%s=%a" (ident2ocaml *)
   (*         (name)) transl init)) fields *)
-  (* | Texp_if (e1, e2, e3) -> *)
-  (*     E.mk (Pexp_ifthenelse (transl e1, transl e2, transl e3)) *)
-  (* | Texp_while (e1, e2, does_break) -> *)
-  (*     if !does_break then *)
-  (*       fprintf out "@[try@\n@[<2>" *)
-  (*     else *)
-  (*       fprintf out "@["; *)
-  (*     fprintf out *)
-  (*       "while@ (%a)@,<>@,0@ do@\n@[<2>%a@]@\ndone" *)
-  (*       transl e1 transl e2; *)
-  (*     if !does_break then *)
-  (*       fprintf out "@]@\nwith@ Break->()@]" *)
-  (*     else *)
-  (*       fprintf out "@]" *)
+  | Texp_if (e1, e2, e3) ->
+      E.ifthenelse (expr e1) (expr e2) (map_opt expr e3)
+  | Texp_while (e1, e2, {contents = false}) ->
+      E.while_ (expr e1) (expr e2)
+  | Texp_while (e1, e2, {contents = true}) ->
+      E.try_ (E.while_ (expr e1) (expr e2))
+        [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
 
 (* and transl_ref out = function *)
 (*   | Tref_name (s, mut) -> *)
