@@ -44,20 +44,12 @@ let rec expr = function
   (*     transl_ref out r *)
   (* | Texp_set (r, e) -> *)
   (*     transl_assign out r e *)
-  (* | Texp_for (index, start, finish, body, does_break) -> *)
-  (*     let forloop = E.mk (Pexp_for (index, transl start, transl finish, Upto, transl body)) in *)
-  (*     E.mk (Pexp_try (forloop, [P.mk (Ppat_construct ("Break", ...)), E.mk (Pexp_construct ("()", None, false))])) *)
-      (* if !does_break then *)
-      (*   fprintf out "@[try@\n@[<2>" *)
-      (* else *)
-      (*   fprintf out "@["; *)
-      (* fprintf out *)
-      (*   "for@ %s=(%a)@ to@ (%a)@ do@\n@[<hv 2>%a@]@\ndone" *)
-      (*   (ident2ocaml index) transl start transl finish transl body; *)
-      (* if !does_break then *)
-      (*   fprintf out "@]@\nwith@ Break->()@]" *)
-      (* else *)
-      (*   fprintf out "@]" *)
+  | Texp_for (index, start, finish, body, {contents = false}) ->
+      E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body)
+  | Texp_for (index, start, finish, body, {contents = true}) ->
+      E.try_
+        (E.for_ {loc=Location.none; txt=index} (expr start) (expr finish) Upto (expr body))
+        [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
   (* | Texp_call (name, []) -> *)
   (*     fprintf out "@[%s@ ()@]" (ident2ocaml name) *)
   (* | Texp_call (name, args) -> *)
