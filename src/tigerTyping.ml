@@ -48,7 +48,7 @@ and var =
 
 type typ =
     TArray of typ
-  | TRecord of (string * typ) list
+  | TRecord of string * (string * typ) list
   | TForward of typ option ref
   | TUnit
   | TInt
@@ -70,7 +70,7 @@ type env = {
   values : value SMap.t;
   types : typ SMap.t;
   in_loop : loop_flag;
-  record_types : (string * (string * typ) list) list ref
+  record_types : (string * (string * typ) list) list list ref
 }
 
 let enter_loop env =
@@ -87,8 +87,12 @@ let empty_env () ={
   record_types = ref []
 }
 
-let save_record_type env name flds =
-  env.record_types := (name, flds) :: !(env.record_types)
+let save_record_types env =
+  function
+    [] ->
+      ()
+  | _ as typs ->
+      env.record_types := typs :: !(env.record_types)
 
 let find_type env (loc, name) =
   try
@@ -130,7 +134,7 @@ let find_var env (loc, name) =
 let rec find_record_type env (loc, name) =
   try
     match actual_type (SMap.find name env.types) with
-      TRecord flds as t ->
+      TRecord (_, flds) as t ->
         t, flds
     | _ ->
         error loc RecordTypeExpected
@@ -173,29 +177,13 @@ let add_fun env name args =
   let argt, t = loop [] args in
   { env with values = SMap.add name (Fun (argt, t)) env.values }
 
-let add_typ env name t =
+let add_type env (_, name) t =
   { env with types = SMap.add name t env.types }
 
 let is_record_type t =
   match actual_type t with
     TRecord _ -> true
   | _ -> false
-
-let typ env t =
-  let find_type env id =
-    match find_type_opt env id with
-      None ->
-        TForward (ref None)
-    | Some t ->
-        t
-  in
-  match t with
-    PNameTyp (_, _, id) ->
-      find_type env id
-  | PArrayTyp (_, _, id) ->
-      TArray (find_type env id)
-  | PRecordTyp (_, _, flds) ->
-      TRecord (List.map (fun ((_, name), typid) -> name, find_type env typid) flds)
 
 let rec var env =
   function
@@ -206,7 +194,7 @@ let rec var env =
       begin
         let rt, rc = var env v in
         let index = int_exp env index in
-        match rt with
+        match actual_type rt with
           TArray t ->
             t, TIndexVar (rc, index)
         | _ ->
@@ -215,8 +203,8 @@ let rec var env =
   | PFieldVar (_, v, (loc, name)) ->
       begin
         let rt, rc = var env v in
-        match rt with
-          TRecord flds ->
+        match actual_type rt with
+          TRecord (_, flds) ->
             begin
               try
                 let t = List.assoc name flds in
@@ -335,26 +323,26 @@ and exp env =
       let e2 = typ_exp env t1 e2 in
       TBool, TCallExp (op, [e1; e2])
   | PBinExp (_, e1, ("=" | "<>" as op), e2) ->
+      (* FIXME fix the case when either [e1] or [e2] are `nil' *)
       let t1, e1 = exp env e1 in
       let e2 = typ_exp env t1 e2 in
       let op' = match op with "=" -> "==" | "<>" -> "!=" | _ -> assert false in
       begin
         match actual_type t1 with
-          TString
-        | TInt
-        | TBool
-        | TAny
-        | TUnit ->
+          TString | TInt | TBool | TAny | TUnit ->
             TBool, TCallExp (op, [e1; e2])
-        | TRecord _
-        | TArray _ ->
+        | TRecord _ | TArray _ ->
             TBool, TCallExp (op', [e1; e2])
         | _ ->
             assert false
       end
+  | PBinExp _ ->
+      assert false
   | PUnaryExp (_, "-", e) ->
       let e = int_exp env e in
       TInt, TCallExp ("~-", [e])
+  | PUnaryExp _ ->
+      assert false
   | PIfExp (_, e1, e2, None) ->
       let e1 = int_exp env e1 in
       let e2 = unit_exp env e2 in
@@ -432,10 +420,58 @@ and dec env d e =
       let t, e = exp env e in
       t, TLetExp (name, init1, mf, e)
   | PTypeDec (_, typs) ->
-      assert false
-      (* List.fold_left *)
-      (*   (fun env (name, typ) -> *)
-      (*      add_typ env name (typecheck_typ env typ)) env tl, td *)
+      let rec scan env refs =
+        function
+          [] ->
+            env, List.rev refs
+        | t :: typs ->
+            let r = ref None in
+            let env = add_type env (typ_name t) (TForward r) in
+            scan env (r :: refs) typs
+      in
+      let env, refs = scan env [] typs in
+      let update r t = r := Some t; t in
+      let saved_types = ref [] in
+      let save name flds = saved_types := (name, flds) :: !saved_types in
+      let rec mktype r =
+        function
+          PRecordTyp (_, (_, id), flds) ->
+            let flds =
+              List.map
+                (fun ((_, fid), tid) -> fid, find_type env tid)
+                flds
+            in
+            save id flds;
+            update r (TRecord (id, flds))
+        | PArrayTyp (_, id, tid) ->
+            update r (TArray (find_type env tid))
+        | PNameTyp (_, _, tid) ->
+            update r (find_type env tid)
+      in
+      let typs = List.map2 mktype refs typs in
+      save_record_types env (List.rev !saved_types);
+      let rec check seenr visited t =
+        if List.memq t visited then
+          if seenr then () else error Location.none BadTypeCycle
+        else
+          match t with
+            TUnit | TInt | TString | TAny | TBool ->
+              ()
+          | TRecord (_, flds) ->
+              List.iter (fun (_, t1) -> check true (t :: visited) t1) flds
+          | TArray t1 ->
+              check seenr (t :: visited) t1
+          | TForward r ->
+              begin
+                match !r with
+                  None ->
+                    assert false
+                | Some t1 ->
+                    check seenr visited t1
+              end
+      in
+      List.iter (check false []) typs;
+      exp env e
   | PFunctionDec (_, funs) ->
       let env1 =
         List.fold_left
@@ -489,8 +525,13 @@ let std_types = [
   "string", string
 ]
 
-let std_env =
+let std_env () =
   let env = empty_env () in
   let env = List.fold_left (fun env (name, args) -> add_fun env name args) env primitives in
-  let env = List.fold_left (fun env (name, t) -> add_typ env name t) env std_types in
+  let env = List.fold_left (fun env (name, t) -> add_type env (Location.none, name) t) env std_types in
   env
+
+let exp e =
+  let env = std_env () in
+  let _, e = exp env e in
+  List.rev !(env.record_types), e

@@ -53,6 +53,12 @@ and typ =
   | PArrayTyp of loc * id * id
   | PNameTyp of loc * id * id
 
+let typ_name =
+  function
+    PRecordTyp (_, id, _)
+  | PArrayTyp (_, id, _)
+  | PNameTyp (_, id, _) -> id
+
 let loc_exp =
   function
     PBinExp (loc, _, _, _)

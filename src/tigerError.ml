@@ -34,6 +34,7 @@ type error =
   | BadBreak
   | BadParse
   | IntOrStringExpected
+  | BadTypeCycle
 
 exception Error of Location.t * error
 
@@ -78,3 +79,5 @@ let report ppf =
       fprintf ppf "Parsing error"
   | IntOrStringExpected ->
       fprintf ppf "Int or String expected"
+  | BadTypeCycle ->
+      fprintf ppf "Bad type cycle"

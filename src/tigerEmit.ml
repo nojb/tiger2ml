@@ -30,14 +30,46 @@ let map_opt f =
 let mkident ?(loc = Location.none) s =
   Location.mkloc (Longident.parse s) loc
 
-let rec typ =
+let rec emit_type =
   function
-    TInt -> T.constr (mkident "int") []
-  | TString -> T.constr (mkident "string") []
-  | TUnit -> T.constr (mkident "unit") []
-  | TArray t -> T.constr (mkident "array") [ typ t ]
-  | TAny -> invalid_arg "emit_type"
-  | TBool -> T.constr (mkident "bool") []
+    TInt ->
+      T.constr (mkident "int") []
+  | TString ->
+      T.constr (mkident "string") []
+  | TUnit ->
+      T.constr (mkident "unit") []
+  | TArray t ->
+      T.constr (mkident "array") [ emit_type t ]
+  | TAny ->
+      invalid_arg "emit_type"
+  | TBool ->
+      T.constr (mkident "bool") []
+  | TRecord (id, _) ->
+      T.constr (mkident "option") [ T.constr (mkident id) [] ]
+  | TForward r ->
+      begin
+        match !r with
+          None ->
+            assert false
+        | Some t ->
+            emit_type t
+      end
+
+let emit_top_types typs =
+  let mkrecord fields = {
+    ptype_params = [];
+    ptype_cstrs = [];
+    ptype_kind =
+      Ptype_record
+        (List.map (fun (name, t) -> Location.mknoloc name, Mutable, emit_type t, Location.none) fields);
+    ptype_private = Public;
+    ptype_manifest = None;
+    ptype_variance = [];
+    ptype_loc = Location.none
+  }
+  in
+  let typs = List.map (fun (name, fields) -> Location.mknoloc name, mkrecord fields) typs in
+  M.type_ typs
 
 let rec expr =
   function
@@ -129,6 +161,8 @@ and var =
   | TIndexVar (v, e) ->
       E.apply_nolabs (E.lid "Array.get") [var v; expr e]
 
-let emit_ocaml e =
-  let e = expr e in
-  Format.printf "%a@." Pprintast.default # structure_item (M.eval e)
+let emit_ocaml typs e =
+  let typs = List.map emit_top_types typs in
+  let e = M.eval (expr e) in
+  let m = typs @ [e] in
+  Format.printf "%a@." Pprintast.default # structure m

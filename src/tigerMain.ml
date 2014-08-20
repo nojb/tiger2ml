@@ -27,8 +27,8 @@ let _ =
   try
     let lexbuf = get_lexbuf () in
     let prg = TigerParser.program TigerLexer.token lexbuf in
-    let (_, typedprg) = TigerTyping.exp TigerTyping.std_env prg in
-    TigerEmit.emit_ocaml typedprg
+    let typs, prg = TigerTyping.exp prg in
+    TigerEmit.emit_ocaml typs prg
   with
     Error (loc, err) ->
       eprintf "%aError: %a.@." Location.print loc TigerError.report err
