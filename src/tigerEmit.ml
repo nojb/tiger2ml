@@ -165,4 +165,4 @@ let emit_ocaml typs e =
   let typs = List.map emit_top_types typs in
   let e = M.eval (expr e) in
   let m = typs @ [e] in
-  Format.printf "%a@." Pprintast.default # structure m
+  m

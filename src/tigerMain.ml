@@ -15,20 +15,19 @@
 open Format
 open TigerError
 
-let get_lexbuf () =
-  if Array.length Sys.argv = 1 then
-    Lexing.from_channel stdin
-  else begin
-    TigerSyntax.currfilename := Sys.argv.(1);
-    Lexing.from_channel (open_in Sys.argv.(1))
-  end
+let parse_file ppf inputfile =
+  let lexbuf = Lexing.from_channel (open_in inputfile) in
+  let prg = TigerParser.program TigerLexer.token lexbuf in
+  let typs, prg = TigerTyping.exp prg in
+  let m = TigerEmit.emit_ocaml typs prg in
+  printf "%a@." Pprintast.default # structure m
+  
+let usage =
+  "Usage: tiger2ml <options> <file>\nOptions are:"
 
-let _ =
+let main () =
   try
-    let lexbuf = get_lexbuf () in
-    let prg = TigerParser.program TigerLexer.token lexbuf in
-    let typs, prg = TigerTyping.exp prg in
-    TigerEmit.emit_ocaml typs prg
+    Arg.parse [] (parse_file Format.err_formatter) usage
   with
     Error (loc, err) ->
       eprintf "%aError: %a.@." Location.print loc TigerError.report err
@@ -36,3 +35,6 @@ let _ =
       eprintf "Parser error (where?).@."
   | Failure e ->
       eprintf "Internal error: %s@." e
+
+let _ =
+  main ()
