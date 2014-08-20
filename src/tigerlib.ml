@@ -48,4 +48,7 @@ let _not n =
 let _exit n =
   ignore (exit n)
 
-exception Nil of int
+exception Break
+exception Nil of int * int * int
+exception Division_by_zero of int * int * int
+exception Out_of_bounds of int * int * int

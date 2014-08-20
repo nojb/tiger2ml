@@ -47,13 +47,14 @@ and var =
   | TIndexVar of var * exp
 
 type typ =
-    TArrayTyp of typ
-  | TRecordTyp of (string * typ) list
-  | TForwardTyp of typ option ref
-  | TUnitTyp
-  | TIntTyp
-  | TStringTyp
-  | TAnyTyp
+    TArray of typ
+  | TRecord of (string * typ) list
+  | TForward of typ option ref
+  | TUnit
+  | TInt
+  | TString
+  | TAny
+  | TBool
 
 module SMap = Map.Make (String)
 
@@ -69,7 +70,7 @@ type env = {
   values : value SMap.t;
   types : typ SMap.t;
   in_loop : loop_flag;
-  record_types : (int * string list * typ) list ref
+  record_types : (string * (string * typ) list) list ref
 }
 
 let enter_loop env =
@@ -86,24 +87,25 @@ let empty_env () ={
   record_types = ref []
 }
 
+let save_record_type env name flds =
+  env.record_types := (name, flds) :: !(env.record_types)
+
 let find_type env (loc, name) =
   try
     SMap.find name env.types
   with
     Not_found ->
       error loc (TypeNotFound name)
-;;
 
 let find_type_opt env (_, name) =
   try
     Some (SMap.find name env.types)
   with
     Not_found -> None
-;;
 
 let rec actual_type =
   function
-    TForwardTyp r ->
+    TForward r ->
       begin
         match !r with
           None ->
@@ -113,7 +115,6 @@ let rec actual_type =
       end
   | _ as x ->
       x
-;;
 
 let find_var env (loc, name) =
   try
@@ -125,31 +126,28 @@ let find_var env (loc, name) =
   with
     Not_found ->
       error loc (VariableNotFound name)
-;;
 
 let rec find_record_type env (loc, name) =
   try
     match actual_type (SMap.find name env.types) with
-      TRecordTyp flds as t ->
+      TRecord flds as t ->
         t, flds
     | _ ->
         error loc RecordTypeExpected
   with
     Not_found ->
       error loc (TypeNotFound name)
-;;
 
 let rec find_array_type env (loc, name) =
   try
     match actual_type (SMap.find name env.types) with
-      TArrayTyp t1 as t ->
+      TArray t1 as t ->
         t, t1
     | _ ->
         error loc ArrayTypeExpected
   with
     Not_found ->
       error loc (TypeNotFound name)
-;;
 
 let find_fun env (loc, name) =
   try
@@ -161,11 +159,9 @@ let find_fun env (loc, name) =
   with
     Not_found ->
       error loc (FunctionNotFound name)
-;;
 
 let add_var env name t mut =
   { env with values = SMap.add name (Var (t, mut)) env.values }
-;;
 
 let add_fun env name args =
   let rec loop r =
@@ -176,44 +172,30 @@ let add_fun env name args =
   in
   let argt, t = loop [] args in
   { env with values = SMap.add name (Fun (argt, t)) env.values }
-;;
 
 let add_typ env name t =
   { env with types = SMap.add name t env.types }
-;;
-
-let equal_types t1 t2 =
-  match actual_type t1, actual_type t2 with
-    (TArrayTyp _ | TRecordTyp _), (TArrayTyp _ | TRecordTyp _) ->
-      t1 == t2
-  | TAnyTyp, _
-  | _, TAnyTyp ->
-      true
-  | _ ->
-      t1 = t2 
-;;
 
 let is_record_type t =
   match actual_type t with
-    TRecordTyp _ -> true
+    TRecord _ -> true
   | _ -> false
-;;
 
-let rec typ env =
-  function
-    PNameTyp (_, id) ->
-      begin
-        match find_type_opt env id with
-          None ->
-            TForwardTyp (ref None)
-        | Some t ->
-            t
-      end
-  | PArrayTyp (_, t) ->
-      TArrayTyp (typ env t)
-  | PRecordTyp (_, flds) ->
-      TRecordTyp (List.map (fun ((_, name), typid) -> name, find_type env typid) flds)
-;;
+let typ env t =
+  let find_type env id =
+    match find_type_opt env id with
+      None ->
+        TForward (ref None)
+    | Some t ->
+        t
+  in
+  match t with
+    PNameTyp (_, _, id) ->
+      find_type env id
+  | PArrayTyp (_, _, id) ->
+      TArray (find_type env id)
+  | PRecordTyp (_, _, flds) ->
+      TRecord (List.map (fun ((_, name), typid) -> name, find_type env typid) flds)
 
 let rec var env =
   function
@@ -225,7 +207,7 @@ let rec var env =
         let rt, rc = var env v in
         let index = int_exp env index in
         match rt with
-          TArrayTyp t ->
+          TArray t ->
             t, TIndexVar (rc, index)
         | _ ->
             error (loc_var v) ArrayExpected
@@ -234,7 +216,7 @@ let rec var env =
       begin
         let rt, rc = var env v in
         match rt with
-          TRecordTyp flds ->
+          TRecord flds ->
             begin
               try
                 let t = List.assoc name flds in
@@ -248,33 +230,60 @@ let rec var env =
 
 and int_exp env e =
   let t, e' = exp env e in
-  if equal_types t TIntTyp then
-    e'
-  else
+  match actual_type t with
+    TAny
+  | TInt ->
+      e'
+  | TBool ->
+      TIfExp (e', TIntExp 1, Some (TIntExp 0))
+  | _ ->
     error (loc_exp e) IntExpected
 
 and bool_exp env e =
-  int_exp env e (* FIXME *)
-
+  let t, e' = exp env e in
+  match actual_type t with
+    TAny
+  | TBool ->
+      e'
+  | TInt ->
+      TCallExp ("<>", [e'; TIntExp 0])
+  | _ ->
+      error (loc_exp e) IntExpected
+        
 and unit_exp env e =
   let t, e' = exp env e in
-  if equal_types t TUnitTyp then
-    e'
-  else
-    error (loc_exp e) UnitExpected
+  match actual_type t with
+    TAny
+  | TUnit ->
+      e'
+  | _ ->
+      error (loc_exp e) UnitExpected
 
 and typ_exp env t e =
   let t', e' = exp env e in
-  if equal_types t t' then
-    e'
-  else
-    error (loc_exp e) TypeMismatch
+  match actual_type t, actual_type t' with
+    TBool, TInt ->
+      TCallExp ("<>", [e'; TIntExp 0])
+  | TInt, TBool ->
+      TIfExp (e', TIntExp 1, Some (TIntExp 0))
+  | TBool, TBool
+  | TInt, TInt
+  | TUnit, TUnit
+  | TString, TString
+  | TAny, _ | _, TAny ->
+      e'
+  | (TRecord _ | TArray _ as t1), (TRecord _ | TArray _ as t2) when t1 == t2 ->
+      e'
+  | _ ->
+      error (loc_exp e) TypeMismatch
 
 and int_or_string_exp env e =
   let t, e' = exp env e in
   match actual_type t with
-    TIntTyp
-  | TStringTyp ->
+    TAny
+  | TInt
+  | TBool
+  | TString ->
       t, e'
   | _ ->
       error (loc_exp e) IntOrStringExpected
@@ -287,20 +296,16 @@ and nil_exp env t e =
       else
         error loc TypeMismatch
   | _ as e ->
-      let t1, e1 = exp env e in
-      if equal_types t t1 then
-        e1
-      else
-        error (loc_exp e) TypeMismatch
+      typ_exp env t e
 
 and exp env =
   function
     PIntExp (_, n) ->
-      TIntTyp, TIntExp n
+      TInt, TIntExp n
   | PStringExp (_, s) ->
-      TStringTyp, TStringExp s
+      TString, TStringExp s
   | PUnitExp _ ->
-      TUnitTyp, TUnitExp
+      TUnit, TUnitExp
   | PSeqExp (_, e1, e2) ->
       let _, e1 = exp env e1 in
       let t, e2 = exp env e2 in
@@ -312,92 +317,75 @@ and exp env =
         match env.in_loop with
           InLoop has_break ->
             has_break := true;
-            TAnyTyp, TBreakExp
+            TAny, TBreakExp
         | NoLoop ->
             error loc BadBreak
       end
   | PBinExp (_, e1, ("+" | "-" | "*" | "/" as op), e2) ->
       let e1 = int_exp env e1 in
       let e2 = int_exp env e2 in
-      TIntTyp, TCallExp (op, [e1; e2])
-  | PBinExp (_, e1, "&", e2) ->
-      let e1 = int_exp env e1 in
-      let e2 = int_exp env e2 in
-      TIntTyp, TCallExp ("&&", [e1; e2])
-  | PBinExp (_, e1, "|", e2) ->
-      let e1 = int_exp env e1 in
-      let e2 = int_exp env e2 in
-      TIntTyp, TCallExp ("||", [e1; e2])
+      TInt, TCallExp (op, [e1; e2])
+  | PBinExp (_, e1, ("&" | "|" as op), e2) ->
+      let e1 = bool_exp env e1 in
+      let e2 = bool_exp env e2 in
+      let op = match op with "&" -> "&&" | "|" -> "||" | _ -> assert false in
+      TBool, TCallExp (op, [e1; e2])
   | PBinExp (_, e1, ("<" | "<=" | ">=" | ">" as op), e2) ->
       let t1, e1 = int_or_string_exp env e1 in
       let e2 = typ_exp env t1 e2 in
-      TIntTyp, TCallExp (op, [e1; e2])
-      (*   | "=" | "<>" -> *)
-      (*       begin *)
-      (*         match t with *)
-      (*           TIntTyp *)
-      (*         | TUnitTyp *)
-      (*         | TStringTyp -> *)
-      (*             TIntTyp, TBinExp (e1c, op, e2c) *)
-      (*         | TRecordTyp _ *)
-      (*         | TArrayTyp _ -> *)
-      (*             TIntTyp, TBinExp (e1c, "==", e2c) *)
-      (*         | _ -> *)
-      (*             assert false *)
-      (*       end *)
-      (*   | _ -> *)
-      (*       assert false *)
-      (* end *)
+      TBool, TCallExp (op, [e1; e2])
+  | PBinExp (_, e1, ("=" | "<>" as op), e2) ->
+      let t1, e1 = exp env e1 in
+      let e2 = typ_exp env t1 e2 in
+      let op' = match op with "=" -> "==" | "<>" -> "!=" | _ -> assert false in
+      begin
+        match actual_type t1 with
+          TString
+        | TInt
+        | TBool
+        | TAny
+        | TUnit ->
+            TBool, TCallExp (op, [e1; e2])
+        | TRecord _
+        | TArray _ ->
+            TBool, TCallExp (op', [e1; e2])
+        | _ ->
+            assert false
+      end
   | PUnaryExp (_, "-", e) ->
       let e = int_exp env e in
-      TIntTyp, TCallExp ("~-", [e])
+      TInt, TCallExp ("~-", [e])
   | PIfExp (_, e1, e2, None) ->
       let e1 = int_exp env e1 in
       let e2 = unit_exp env e2 in
-      TUnitTyp, TIfExp (e1, e2, None)
+      TUnit, TIfExp (e1, e2, None)
   | PIfExp (_, e1, e2, Some e3) ->
       let e1 = bool_exp env e1 in
       let e2t, e2c = exp env e2 in
-      let e3t, e3c = exp env e3 in
-      if equal_types e2t e3t then
-        e2t, TIfExp (e1, e2c, Some e3c)
-      else
-        error (loc_exp e3) TypeMismatch
+      let e3c = typ_exp env e2t e3 in
+      e2t, TIfExp (e1, e2c, Some e3c)
   | PWhileExp (_, e1, e2) ->
       let e1 = bool_exp env e1 in
       let env, has_break = enter_loop env in
       let e2 = unit_exp env e2 in
-      TUnitTyp, TWhileExp (e1, e2, !has_break)
+      TUnit, TWhileExp (e1, e2, !has_break)
   | PCallExp (_, (loc, name as id), el) ->
-      begin
-        let argt, t = find_fun env id in
-        let args2 = List.map (exp env) el in
-        try
-          if List.for_all2 (fun t1 (t2, _) -> equal_types t1 t2) argt args2 then
-            t, TCallExp (name, List.map (fun (_, x) -> x) args2)
-          else
-            error loc TypeMismatch
-        with
-          Invalid_argument _ ->
-            error loc BadArgumentCount
-      end
+      let argt, t = find_fun env id in
+      if List.length argt <> List.length el then error loc BadArgumentCount;
+      let args2 = List.map2 (nil_exp env) argt el in
+      t, TCallExp (name, args2)
   | PAssignExp (_, v, e) ->
       let rt, rc = var env v in
-      let et, ec = exp env e in
-      if equal_types rt et then
-        begin
-          begin
-            match rc with
-              TNameVar (name, Immutable) ->
-                error (loc_exp e) (ImmutableAssignment name)
-            | TNameVar (_, Mutable m) ->
-                m := true
-            | _ -> ()
-          end;
-          TUnitTyp, TAssignExp (rc, ec)
-        end
-      else
-        error (loc_exp e) TypeMismatch
+      let ec = nil_exp env rt e in
+      begin
+        match rc with
+          TNameVar (name, Immutable) ->
+            error (loc_exp e) (ImmutableAssignment name)
+        | TNameVar (_, Mutable m) ->
+            m := true
+        | _ -> ()
+      end;
+      TUnit, TAssignExp (rc, ec)
   | PVarExp (_, v) ->
       let rt, rc = var env v in
       rt, TVarExp rc
@@ -406,29 +394,23 @@ and exp env =
   | PForExp (_, (_, index), start, finish, body) ->
       let start = int_exp env start in
       let finish = int_exp env finish in
-      let env = add_var env index TIntTyp Immutable in
+      let env = add_var env index TInt Immutable in
       let env, has_break = enter_loop env in
       let body = unit_exp env body in
-      TUnitTyp, TForExp (index, start, finish, body, !has_break)
+      TUnit, TForExp (index, start, finish, body, !has_break)
   | PArrayExp (_, typid, size, init) ->
       let size = int_exp env size in
-      let initt, initc = exp env init in
       let t, typ = find_array_type env typid in
-      if equal_types typ initt then
-        t, TArrayExp (size, initc)
-      else
-        error (loc_exp init) TypeMismatch
+      let initc = nil_exp env typ init in
+      t, TArrayExp (size, initc)
   | PRecordExp (_, typid, fields) ->
       let t, t1 = find_record_type env typid in
       let flds =
         List.map2
           (fun (f1n, f1tn) ((_, f2n), f2init) ->
              if f1n = f2n then
-               let f2initt, f2initc = exp env f2init in
-               if equal_types f2initt f1tn then
-                 f2n, f2initc
-               else
-                 error (loc_exp f2init) TypeMismatch
+               let f2initc = nil_exp env f1tn f2init in
+               f2n, f2initc
              else
                error (loc_exp f2init) BadFieldName) t1 fields
       in
@@ -458,7 +440,7 @@ and dec env d e =
       let env1 =
         List.fold_left
           (fun env ((_, name), args, ret_typid, _) ->
-             let rett = map_default (find_type env) TUnitTyp ret_typid in
+             let rett = map_default (find_type env) TUnit ret_typid in
              add_fun env name ((List.map (fun (_, y) -> find_type env y) args) @ [rett]))
           env funs
       in
@@ -474,19 +456,16 @@ and dec env d e =
                     add_var env arg_name (find_type env arg_typid) mut, mut :: muts)
                  (env1, []) args
              in
-             let bodyt, bodyc = exp env2 body in
-             let rett = map_default (find_type env) TUnitTyp ret_typid in
-             if equal_types bodyt rett then
-               (name, List.map2 (fun ((_, x), _) mut -> (x, mut)) args (List.rev muts), bodyc)
-             else
-               error (loc_exp body) TypeMismatch)
+             let rett = map_default (find_type env) TUnit ret_typid in
+             let bodyc = nil_exp env2 rett body in
+             (name, List.map2 (fun ((_, x), _) mut -> (x, mut)) args (List.rev muts), bodyc))
           funs
       in
       t, TLetRecExp (funs, e)
          
-let string = TStringTyp
-let int = TIntTyp
-let unit = TUnitTyp
+let string = TString
+let int = TInt
+let unit = TUnit
   
 let (@->) t1 t2 = t1 :: t2
 let ret t = t :: []

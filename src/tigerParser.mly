@@ -225,26 +225,21 @@ var_dec
   ;
 
 typ_dec
-  : TYPE id EQ typ
-    { ($2, $4) }
+  : TYPE id EQ id
+      { PNameTyp (loc (), $2, $4) }
+  | TYPE id EQ ARRAY OF id
+      { PArrayTyp (loc (), $2, $6) }
+  | TYPE id EQ LC RC
+      { PRecordTyp (loc (), $2, []) }
+  | TYPE id EQ LC type_field_list RC
+      { PRecordTyp (loc (), $2, $5) }
   ;
-  
+
 type_field_list
   : id COLON id
       { ($1, $3) :: [] }
   | id COLON id COMMA type_field_list
       { ($1, $3) :: $5 }
-  ;
-
-typ
-  : id
-      { PNameTyp (loc (), $1) }
-  | ARRAY OF typ
-      { PArrayTyp (loc (), $3) }
-  | LC RC
-      { PRecordTyp (loc (), []) }
-  | LC type_field_list RC
-      { PRecordTyp (loc (), $2) }
   ;
 
 var

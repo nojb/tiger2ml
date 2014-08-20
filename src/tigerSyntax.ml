@@ -45,13 +45,13 @@ and exp =
 
 and dec =
     PVarDec of loc * (id * id option * exp)
-  | PTypeDec of loc * (id * typ) list
+  | PTypeDec of loc * typ list
   | PFunctionDec of loc * (id * (id * id) list * id option * exp) list
 
 and typ =
-    PRecordTyp of loc * (id * id) list
-  | PArrayTyp of loc * typ
-  | PNameTyp of loc * id
+    PRecordTyp of loc * id * (id * id) list
+  | PArrayTyp of loc * id * id
+  | PNameTyp of loc * id * id
 
 let loc_exp =
   function

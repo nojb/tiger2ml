@@ -12,7 +12,6 @@
    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
    PERFORMANCE OF THIS SOFTWARE. *)
 
-(* open Syntax *)
 open TigerTyping
 
 open Ast_mapper
@@ -20,15 +19,6 @@ open Parsetree
 open Asttypes
   
 (* let ident2ocaml s = "_" ^ s *)
-
-(* let mathop_impl = function *)
-(*   | Add -> "+" | Minus -> "-" | Times -> "*" | Div -> "/" *)
-(*   | _ -> assert false *)
-
-(* let cmpop_impl = function *)
-(*   | Eq -> "=" | Neq -> "<>" | Ge -> ">=" *)
-(*   | Gt -> ">" | Le -> "<=" | Lt -> "<" *)
-(*   | _ -> assert false *)
 
 let map_opt f =
   function
@@ -42,16 +32,17 @@ let mkident ?(loc = Location.none) s =
 
 let rec typ =
   function
-    TIntTyp -> T.constr (mkident "int") []
-  | TStringTyp -> T.constr (mkident "string") []
-  | TUnitTyp -> T.constr (mkident "unit") []
-  | TArrayTyp t -> T.constr (mkident "array") [ typ t ]
-  | TAnyTyp -> invalid_arg "emit_type"
+    TInt -> T.constr (mkident "int") []
+  | TString -> T.constr (mkident "string") []
+  | TUnit -> T.constr (mkident "unit") []
+  | TArray t -> T.constr (mkident "array") [ typ t ]
+  | TAny -> invalid_arg "emit_type"
+  | TBool -> T.constr (mkident "bool") []
 
 let rec expr =
   function
     TBreakExp ->
-      E.apply_nolabs (E.lid "raise") [E.construct (mkident "Tigerlib.Break") None false]
+      E.apply_nolabs (E.lid "raise") [E.construct (mkident "TigerLib.Break") None false]
   | TNilExp ->
       E.construct (mkident "None") None false
   | TIntExp n ->
@@ -104,7 +95,7 @@ let rec expr =
   | TForExp (index, start, finish, body, true) ->
       E.try_
         (E.for_ (Location.mknoloc index) (expr start) (expr finish) Upto (expr body))
-        [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
+        [P.construct (mkident "TigerLib.Break") None false, E.construct (mkident "()") None false]
   | TCallExp (name, []) ->
       E.apply_nolabs (E.lid name) [E.construct (mkident "()") None false]
   | TCallExp (name, args) ->
@@ -121,7 +112,7 @@ let rec expr =
   | TWhileExp (e1, e2, true) ->
       E.try_
         (E.while_ (expr e1) (expr e2))
-        [P.construct (mkident "Tigerlib.Break") None false, E.construct (mkident "()") None false]
+        [P.construct (mkident "TigerLib.Break") None false, E.construct (mkident "()") None false]
 
 and var =
   function
