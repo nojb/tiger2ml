@@ -1,0 +1,13 @@
+let function sum (n : int) : int =
+  let
+    var s := 0 var i := 0
+  in
+    while 1 do
+      if i >= n then break
+      else (s := s + i; i := i + 1);
+    s
+  end
+in
+  printi (sum (100));
+  print ("\n")
+end
