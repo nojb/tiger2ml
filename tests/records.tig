@@ -1,2 +1,8 @@
-let type a = { field1 : int , field2 : int }
-in a { field1 = 1; field2 = 3 } end
+let
+  type a = { field1 : int, field2 : int }
+  var x : a := nil
+in
+  x := a { field1 = 1, field2 = 3 };
+  printi (x.field1);
+  print ("\n")
+end

@@ -33,8 +33,8 @@ type exp =
 
 and var =
     TNameVar of string * mutable_flag
-  | TFieldVar of var * string
-  | TIndexVar of var * exp
+  | TFieldVar of var * string * int
+  | TIndexVar of var * exp * int
 
 type typ =
     TArray of typ
@@ -188,10 +188,11 @@ let rec var env =
   | PIndexVar (_, v, index) ->
       begin
         let rt, rc = var env v in
-        let index = int_exp env index in
+        let index' = int_exp env index in
         match actual_type rt with
           TArray t ->
-            t, TIndexVar (rc, index)
+            let line = (loc_exp index).Location.loc_start.Lexing.pos_lnum in
+            t, TIndexVar (rc, index', line)
         | _ ->
             error (loc_var v) ArrayExpected
       end
@@ -203,7 +204,8 @@ let rec var env =
             begin
               try
                 let t = List.assoc name flds in
-                t, TFieldVar (rc, name)
+                let line = loc.Location.loc_start.Lexing.pos_lnum in
+                t, TFieldVar (rc, name, line)
               with
                 Not_found -> error loc (FieldNotFound name)
             end

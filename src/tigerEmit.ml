@@ -8,8 +8,6 @@ open Ast_mapper
 open Parsetree
 open Asttypes
   
-(* let ident2ocaml s = "_" ^ s *)
-
 let map_opt f =
   function
     None ->
@@ -108,10 +106,15 @@ let rec expr =
       var v
   | TAssignExp (TNameVar (name, _), e) ->
       E.apply_nolabs (E.lid ":=") [E.lid name; expr e]
-  | TAssignExp (TFieldVar (v, name), e) ->
-      E.setfield (var v) (mkident name) (expr e)
-  | TAssignExp (TIndexVar (v, e'), e) ->
-      E.apply_nolabs (E.lid "Array.set") [var v; expr e'; expr e]
+  | TAssignExp (TFieldVar (v, name, line), e) ->
+      E.match_ (var v)
+        [P.construct (mkident "None") None false,
+         E.apply_nolabs (E.lid "raise")
+           [E.construct (mkident "TigerLib.Nil") (Some (E.constant (Const_int line))) false];
+         P.construct (mkident "Some") (Some (P.var (Location.mknoloc "x"))) false,
+         E.setfield (E.lid "x") (mkident name) (expr e)]
+  | TAssignExp (TIndexVar (v, e', line), e) ->
+      E.apply_nolabs (E.lid "TigerLib.set") [var v; expr e'; expr e; E.constant (Const_int line)]
   | TForExp (index, start, finish, body, false) ->
       E.for_ (Location.mknoloc index) (expr start) (expr finish) Upto (expr body)
   | TForExp (index, start, finish, body, true) ->
@@ -142,17 +145,23 @@ and var =
       E.apply_nolabs (E.lid "!") [E.lid s]
   | TNameVar (s, _) ->
       E.lid s
-  | TFieldVar (v, name) ->
+  | TFieldVar (v, name, line) ->
       E.match_
         (var v)
-        [P.construct (mkident "None") None false, E.assertfalse (); (* FIXME report error ! *)
+        [P.construct (mkident "None") None false, E.apply_nolabs (E.lid "raise")
+           [E.construct (mkident "TigerLib.Nil") (Some (E.constant (Const_int line))) false];
          P.construct (mkident "Some") (Some (P.var (Location.mknoloc "x"))) false,
-         E.field (E.lid "x") (mkident name)] (* FIXME 'x' can be captured ?! *)
-  | TIndexVar (v, e) ->
-      E.apply_nolabs (E.lid "Array.get") [var v; expr e]
+         E.field (E.lid "x") (mkident name)]
+  | TIndexVar (v, e, line) ->
+      E.apply_nolabs (E.lid "TigerLib.get") [var v; expr e; E.constant (Const_int line)]
 
 let emit_ocaml typs e =
   let typs = List.map emit_top_types typs in
-  let e = M.eval (expr e) in
-  let m = typs @ [e] in
+  let e = expr e in
+  let e1 =
+    M.value Nonrecursive
+      [P.var (Location.mknoloc "main"), E.function_ "" None [P.construct (mkident "()") None false, e]]
+  in
+  let e2 = M.eval (E.apply_nolabs (E.lid "TigerLib.run") [E.lid "main"]) in
+  let m = typs @ [e1; e2] in
   m

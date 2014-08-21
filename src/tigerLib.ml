@@ -2,6 +2,12 @@
    All rights reserved.
    Distributed under the Q Public License, version 1.0. *)
 
+exception Break
+
+exception Nil of int
+
+exception Out_of_bounds of int
+
 let print =
   print_string
 
@@ -26,13 +32,16 @@ let chr n =
   try
     String.make 1 (char_of_int n)
   with
-    _ -> exit 1
+    _ -> failwith "chr"
 
 let size =
   String.length
 
-let substring =
-  String.sub
+let substring s pos len =
+  try
+    String.sub s pos len
+  with
+    _ -> failwith "substring"
 
 let concat s1 s2 =
   s1 ^ s2
@@ -43,10 +52,30 @@ let not =
 let exit =
   exit
 
-exception Break
+let get a i line =
+  if i < 0 || i >= Array.length a then
+    raise (Out_of_bounds line)
+  else
+    Array.unsafe_get a i
 
-exception Nil of int * int * int
+let set a i x line =
+  if i < 0 || i >= Array.length a then
+    raise (Out_of_bounds line)
+  else
+    Array.unsafe_set a i x
 
-exception Division_by_zero of int * int * int
-
-exception Out_of_bounds of int * int * int
+let run f =
+  try
+    f ()
+  with
+    Break ->
+      assert false
+  | Nil line ->
+      Printf.eprintf "Fatal error: Nil access in line %i\n%!" line;
+      exit 1
+  | Division_by_zero ->
+      Printf.eprintf "Fatal error: Division by zero";
+      exit 1
+  | Out_of_bounds line ->
+      Printf.eprintf "Fatal error: Out of bounds in line %i\n%!" line;
+      exit 1

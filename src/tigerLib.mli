@@ -2,6 +2,12 @@
    All rights reserved.
    Distributed under the Q Public License, version 1.0. *)
 
+exception Break
+
+exception Nil of int
+
+exception Out_of_bounds of int
+
 val print : string -> unit
 
 val printi : int -> unit
@@ -24,10 +30,8 @@ val not : bool -> bool
 
 val exit : int -> unit
 
-exception Break
+val get : 'a array -> int -> int -> 'a
 
-exception Nil of int * int * int
+val set : 'a array -> int -> 'a -> int -> unit
 
-exception Division_by_zero of int * int * int
-
-exception Out_of_bounds of int * int * int
+val run : (unit -> 'a) -> 'a
