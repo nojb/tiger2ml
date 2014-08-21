@@ -15,10 +15,6 @@
 open TigerSyntax
 open TigerError
 
-let map_default f x = function
-    Some a -> f a
-  | None -> x
-
 type mutable_flag =
     Immutable
   | Mutable of bool ref
@@ -117,7 +113,7 @@ let rec actual_type =
       begin
         match !r with
           None ->
-            invalid_arg "actual_type"
+            assert false
         | Some t ->
             actual_type t
       end
@@ -481,7 +477,11 @@ and dec env d e =
       let env1 =
         List.fold_left
           (fun env ((_, name), args, ret_typid, _) ->
-             let rett = map_default (find_type env) TUnit ret_typid in
+             let rett =
+               match ret_typid with
+                 None -> TUnit
+               | Some t -> find_type env t
+             in
              add_fun env name (List.map (fun (_, y) -> find_type env y) args) rett)
           env funs
       in
@@ -497,7 +497,11 @@ and dec env d e =
                     add_var env arg_name (find_type env arg_typid) mut, mut :: muts)
                  (env1, []) args
              in
-             let rett = map_default (find_type env) TUnit ret_typid in
+             let rett =
+               match ret_typid with
+                 None -> TUnit
+               | Some t -> find_type env t
+             in
              let bodyc = nil_exp env2 rett body in
              (name, List.map2 (fun ((_, x), _) mut -> (x, mut)) args (List.rev muts), bodyc))
           funs
