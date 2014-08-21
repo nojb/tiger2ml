@@ -23,6 +23,10 @@ type mutable_flag =
     Immutable
   | Mutable of bool ref
 
+type primitive_flag =
+    User
+  | Primitive
+
 type exp =
     TIntExp of int
   | TStringExp of string
@@ -60,8 +64,8 @@ module SMap = Map.Make (String)
 
 type value =
     Var of typ * mutable_flag
-  | Fun of typ list * typ
-
+  | Fun of typ list * typ * primitive_flag
+            
 type loop_flag =
     InLoop of bool ref
   | NoLoop
@@ -156,8 +160,8 @@ let rec find_array_type env (loc, name) =
 let find_fun env (loc, name) =
   try
     match SMap.find name env.values with
-      Fun (argt, t) ->
-        argt, t
+      Fun (argt, t, pf) ->
+        argt, t, pf
     | _ ->
         raise Not_found
   with
@@ -167,15 +171,11 @@ let find_fun env (loc, name) =
 let add_var env name t mut =
   { env with values = SMap.add name (Var (t, mut)) env.values }
 
-let add_fun env name args =
-  let rec loop r =
-    function
-      [] -> assert false
-    | [t] -> List.rev r, t
-    | t :: ts -> loop (t :: r) ts
-  in
-  let argt, t = loop [] args in
-  { env with values = SMap.add name (Fun (argt, t)) env.values }
+let add_fun env name args rty =
+  { env with values = SMap.add name (Fun (args, rty, User)) env.values }
+
+let add_prim env name args rty =
+  { env with values = SMap.add name (Fun (args, rty, Primitive)) env.values }
 
 let add_type env (_, name) t =
   { env with types = SMap.add name t env.types }
@@ -358,9 +358,14 @@ and exp env =
       let e2 = unit_exp env e2 in
       TUnit, TWhileExp (e1, e2, !has_break)
   | PCallExp (_, (loc, name as id), el) ->
-      let argt, t = find_fun env id in
+      let argt, t, pf = find_fun env id in
       if List.length argt <> List.length el then error loc BadArgumentCount;
       let args2 = List.map2 (nil_exp env) argt el in
+      let name =
+        match pf with
+          User -> name
+        | Primitive -> "TigerLib." ^ name
+      in
       t, TCallExp (name, args2)
   | PAssignExp (_, v, e) ->
       let rt, rc = var env v in
@@ -477,7 +482,7 @@ and dec env d e =
         List.fold_left
           (fun env ((_, name), args, ret_typid, _) ->
              let rett = map_default (find_type env) TUnit ret_typid in
-             add_fun env name ((List.map (fun (_, y) -> find_type env y) args) @ [rett]))
+             add_fun env name (List.map (fun (_, y) -> find_type env y) args) rett)
           env funs
       in
       let t, e = exp env1 e in
@@ -499,35 +504,30 @@ and dec env d e =
       in
       t, TLetRecExp (funs, e)
          
-let string = TString
-let int = TInt
-let unit = TUnit
-  
-let (@->) t1 t2 = t1 :: t2
-let ret t = t :: []
+let primitives =
+  [
+    "print"    , [ TString ], TUnit;
+    "printi"   , [ TInt ], TUnit;
+    "flush"    , [ TUnit ], TUnit;
+    "getchar"  , [ TUnit ], TString;
+    "ord"      , [ TString ], TInt;
+    "chr"      , [ TInt ], TString;
+    "size"     , [ TString ], TInt;
+    "substring", [ TString; TInt; TInt ], TString;
+    "concat"   , [ TString; TString ], TString;
+    "not"      , [ TBool ], TBool;
+    "exit"     , [ TInt ], TUnit
+  ]
 
-let primitives = [
-  "print", (string @-> ret unit);
-  "printi", (int @-> ret unit);
-  "flush", (unit @-> ret unit);
-  "getchar", (unit @-> ret string);
-  "ord", (string @-> ret int);
-  "chr", (int @-> ret string);
-  "size", (string @-> ret int);
-  "substring", (string @-> int @-> int @-> ret string);
-  "concat", (string @-> string @-> ret string);
-  "not", (int @-> ret int);
-  "exit", (int @-> ret unit)
-]
-
-let std_types = [
-  "int", int;
-  "string", string
-]
+let std_types =
+  [
+    "int"   , TInt;
+    "string", TString
+  ]
 
 let std_env () =
   let env = empty_env () in
-  let env = List.fold_left (fun env (name, args) -> add_fun env name args) env primitives in
+  let env = List.fold_left (fun env (name, args, rty) -> add_prim env name args rty) env primitives in
   let env = List.fold_left (fun env (name, t) -> add_type env (Location.none, name) t) env std_types in
   env
 

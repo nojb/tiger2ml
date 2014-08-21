@@ -12,43 +12,51 @@
    OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
    PERFORMANCE OF THIS SOFTWARE. *)
 
-let _print =
+let print =
   print_string
 
-let _printi =
+let printi =
   print_int
 
-let _flush () =
+let flush () =
   flush stdout
 
-let _getchar () =
-  let c = input_char stdin in
-    (String.make 1 c)
+let getchar () =
+  try
+    String.make 1 (input_char stdin)
+  with
+    End_of_file -> ""
 
-let _ord s =
-  let c = s.[0] in
-    int_of_char c
+let ord s =
+  match String.length s with
+    0 -> -1
+  | _ -> int_of_char s.[0]
 
-let _chr n =
-  let s = char_of_int n in
-    String.make 1 s
+let chr n =
+  try
+    String.make 1 (char_of_int n)
+  with
+    _ -> exit 1
 
-let _size =
+let size =
   String.length
 
-let _substring =
+let substring =
   String.sub
 
-let _concat s1 s2 =
+let concat s1 s2 =
   s1 ^ s2
 
-let _not n =
-  if n = 0 then 1 else 0
+let not =
+  not
 
-let _exit n =
-  ignore (exit n)
+let exit =
+  exit
 
 exception Break
+
 exception Nil of int * int * int
+
 exception Division_by_zero of int * int * int
+
 exception Out_of_bounds of int * int * int
