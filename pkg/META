@@ -1,0 +1,8 @@
+requires = "compiler-libs compiler-libs.common"
+description = "tiger2ml runtime library"
+version = "0.1.0"
+archive(byte) = "tigerLib.cma"
+archive(byte, plugin) = "tigerLib.cma"
+archive(native) = "tigerLib.cmxa"
+archive(native, plugin) = "tigerLib.cmxs"
+exists_if = "tigerLib.cma"

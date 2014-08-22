@@ -18,8 +18,8 @@ Contact: [Nicolas Ojeda Bar][]
 ## Example
 
 See below for installation instructions.  Here we suppose that the preprocessor
-`tiger2ml` and its accompanying Findlib library `tigerLib` has been successfully
-installed.  Suppose that `sum.tig` contains the following code.
+`tiger2ml` and its accompanying [Findlib][] library (of the same name) has been
+successfully installed.  Suppose that `sum.tig` contains the following code.
 
     let function sum (n : int) : int =
       let
@@ -57,24 +57,28 @@ The file `sum.ml` will contain the following.
 
 This file can be compiled to native code by running
 
-    ocamlfind opt -package tigerLib sum.ml -o sum
+    ocamlfind opt -package tiger2ml -linkpkg sum.ml -o sum
     ./sum
     4950
 
 Alternatively, we can translate the file into OCaml and compile it all in one go
 by running
 
-    ocamlfind opt -package tigerLib -pp tiger2ml -impl sum.tig -o sum
+    ocamlfind opt -package tiger2ml -linkpkg -pp tiger2ml -impl sum.tig -o sum
+
+[Findlib]: http://projects.camlcity.org/projects/findlib.html
 
 ## Installation
 
-`tiger2ml` can be installed using [OPAM][].
+`tiger2ml` requires OCaml 4.01.0 (it won't work with a different version because
+chances are that the details of the OCaml syntax tree will change).  It can be
+installed using [OPAM][].
 
     opam install tiger2ml
 
-This will install the actual preprocessor, `tiger2ml`, as well as a OCaml
-library with Findlib name `tigerLib` which is needed to compile the generated
-OCaml programs.
+This will install the actual preprocessor, `tiger2ml`, as well as a Findlib
+library of the same name which is needed to compile the generated OCaml
+programs.
 
 [OPAM]: https://opam.ocaml.org
 
