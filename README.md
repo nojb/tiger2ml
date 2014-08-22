@@ -71,10 +71,22 @@ by running
 ## Installation
 
 `tiger2ml` requires OCaml 4.01.0 (it won't work with a different version because
-chances are that the details of the OCaml syntax tree will change).  It can be
-installed using [OPAM][].
-
+chances are that the details of the OCaml syntax tree will change).  Eventually,
+it will be possible to install `tiger2ml` using [OPAM][] (**THIS IS NOT WORKING
+YET**).
+    
     opam install tiger2ml
+
+For now, we can install it manually.
+
+    git clone https://github.com/nojb/tiger2ml
+    cd tiger2ml
+    ocaml pkg/build.ml native=true native-dynlink=true
+    opam-installer --prefix=`opam config var prefix` tiger2ml.install
+
+To uninstall, add `-u` to the last line.
+
+    opam-installer -u --prefix=`opam config var prefix` tiger2ml.install
 
 This will install the actual preprocessor, `tiger2ml`, as well as a Findlib
 library of the same name which is needed to compile the generated OCaml
