@@ -341,7 +341,7 @@ and exp env =
   | PUnaryExp _ ->
       assert false
   | PIfExp (_, e1, e2, None) ->
-      let e1 = int_exp env e1 in
+      let e1 = bool_exp env e1 in
       let e2 = unit_exp env e2 in
       TUnit, TIfExp (e1, e2, None)
   | PIfExp (_, e1, e2, Some e3) ->
