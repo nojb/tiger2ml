@@ -41,18 +41,19 @@ We can run the preprocessor on this file
 
 The file `sum.ml` will contain the following.
 
-    let _ =
-      let rec sum n =
-        let s = ref 0 in
-        let i = ref 0 in
+    let main () =
+      let rec sum_0 n_1 =
+        let s_2 = ref 0 in
+        let i_3 = ref 0 in
         (try
            while 1 <> 0 do
-             if (!i) >= n
+             if (!i_3) >= n_1
              then raise TigerLib.Break
-             else (s := ((!s) + (!i)); i := ((!i) + 1)) done
+             else (s_2 := ((!s_2) + (!i_3)); i_3 := ((!i_3) + 1)) done
          with | TigerLib.Break  -> ());
-        !s in
-      TigerLib.printi (sum 100); TigerLib.print "\n"
+        !s_2 in
+      TigerLib.printi (sum_0 100); TigerLib.print "\n"
+    let _ = TigerLib.run main
 
 This file can be compiled to native code by running
 
@@ -71,7 +72,9 @@ by running
 
     opam install tiger2ml
 
-This will intall the actual preprocessor, `tiger2ml`, as well as a OCaml library
-with Findlib name `tigerLib` which is needed to compile the generated OCaml programs.
+This will install the actual preprocessor, `tiger2ml`, as well as a OCaml
+library with Findlib name `tigerLib` which is needed to compile the generated
+OCaml programs.
 
 [OPAM]: https://opam.ocaml.org
+
