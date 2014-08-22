@@ -29,7 +29,7 @@ let rec emit_type =
   | TArray t ->
       T.constr (mkident "array") [ emit_type t ]
   | TAny ->
-      invalid_arg "emit_type"
+      assert false
   | TBool ->
       T.constr (mkident "bool") []
   | TRecord (id, _) ->

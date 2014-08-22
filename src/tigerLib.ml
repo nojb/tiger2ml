@@ -71,11 +71,14 @@ let run f =
     Break ->
       assert false
   | Nil line ->
-      Printf.eprintf "Fatal error: Nil access in line %i\n%!" line;
+      Printf.eprintf "Failure (line %i): nil record\n%!" line;
       exit 1
   | Division_by_zero ->
-      Printf.eprintf "Fatal error: Division by zero";
+      Printf.eprintf "Failure: division by zero";
       exit 1
   | Out_of_bounds line ->
-      Printf.eprintf "Fatal error: Out of bounds in line %i\n%!" line;
+      Printf.eprintf "Failure (line %i): index out of bounds\n%!" line;
+      exit 1
+  | Failure err ->
+      Printf.eprintf "Failure: %s\n%!" err;
       exit 1

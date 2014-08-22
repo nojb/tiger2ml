@@ -6,6 +6,7 @@ open Format
 open TigerError
 
 let parse_file ppf inputfile =
+  Location.input_name := inputfile;
   let lexbuf = Lexing.from_channel (open_in inputfile) in
   let prg = TigerParser.program TigerLexer.token lexbuf in
   let typs, prg = TigerTyping.exp prg in
@@ -22,7 +23,7 @@ let main () =
     Error (loc, err) ->
       eprintf "%aError: %a.@." Location.print loc TigerError.report err
   | Parsing.Parse_error ->
-      eprintf "Parser error (where?).@."
+      eprintf "Parsing error.@."
   | Failure e ->
       eprintf "Internal error: %s@." e
 
