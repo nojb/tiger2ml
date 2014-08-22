@@ -10,7 +10,6 @@ type error =
   | ImmutableAssignment of string
   | BadArgumentCount
   | BadFieldName
-  | BadNil
   | TypeNotFound of string
   | VariableNotFound of string
   | ArrayTypeExpected
@@ -41,8 +40,6 @@ let report ppf =
       fprintf ppf "Wrong number of arguments"
   | BadFieldName ->
       fprintf ppf "Wrong field name"
-  | BadNil ->
-      fprintf ppf "Illegal use of `nil'; type cannot be determined"
   | TypeNotFound name ->
       fprintf ppf "Type %s not found" name
   | VariableNotFound name ->

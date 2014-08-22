@@ -45,6 +45,7 @@ type typ =
   | TString
   | TAny
   | TBool
+  | TNil
 
 let next_sym =
   let count = ref (-1) in
@@ -251,10 +252,8 @@ and typ_exp env t e =
       TCallExp ("<>", [e'; TIntExp 0])
   | TInt, TBool ->
       TIfExp (e', TIntExp 1, Some (TIntExp 0))
-  | TBool, TBool
-  | TInt, TInt
-  | TUnit, TUnit
-  | TString, TString
+  | TBool, TBool | TInt, TInt | TUnit, TUnit | TString, TString
+  | TNil, TRecord _ | TRecord _, TNil
   | TAny, _ | _, TAny ->
       e'
   | (TRecord _ | TArray _ as t1), (TRecord _ | TArray _ as t2) when t1 == t2 ->
@@ -273,16 +272,6 @@ and int_or_string_exp env e =
   | _ ->
       error (loc_exp e) IntOrStringExpected
 
-and nil_exp env t e =
-  match e with
-    PNilExp loc ->
-      if is_record_type t then
-        TNilExp
-      else
-        error loc TypeMismatch
-  | _ as e ->
-      typ_exp env t e
-
 and exp env =
   function
     PIntExp (_, n) ->
@@ -296,7 +285,7 @@ and exp env =
       let t, e2 = exp env e2 in
       t, TSeqExp (e1, e2)
   | PNilExp p ->
-      error p BadNil
+      TNil, TNilExp
   | PBreakExp loc ->
       begin
         match env.in_loop with
@@ -320,7 +309,6 @@ and exp env =
       let e2 = typ_exp env t1 e2 in
       TBool, TCallExp (op, [e1; e2])
   | PBinExp (_, e1, ("=" | "<>" as op), e2) ->
-      (* FIXME fix the case when either [e1] or [e2] are `nil' *)
       let t1, e1 = exp env e1 in
       let e2 = typ_exp env t1 e2 in
       let op' = match op with "=" -> "==" | "<>" -> "!=" | _ -> assert false in
@@ -357,11 +345,11 @@ and exp env =
   | PCallExp (_, (loc, name as id), el) ->
       let name, argt, t, pf = find_fun env id in
       if List.length argt <> List.length el then error loc BadArgumentCount;
-      let args2 = List.map2 (nil_exp env) argt el in
+      let args2 = List.map2 (typ_exp env) argt el in
       t, TCallExp (name, args2)
   | PAssignExp (_, v, e) ->
       let rt, rc = var env v in
-      let ec = nil_exp env rt e in
+      let ec = typ_exp env rt e in
       begin
         match rc with
           TNameVar (name, Immutable) ->
@@ -386,7 +374,7 @@ and exp env =
   | PArrayExp (_, typid, size, init) ->
       let size = int_exp env size in
       let t, typ = find_array_type env typid in
-      let initc = nil_exp env typ init in
+      let initc = typ_exp env typ init in
       t, TArrayExp (size, initc)
   | PRecordExp (_, typid, fields) ->
       let t, t1 = find_record_type env typid in
@@ -394,7 +382,7 @@ and exp env =
         List.map2
           (fun (f1n, f1tn) ((_, f2n), f2init) ->
              if f1n = f2n then
-               let f2initc = nil_exp env f1tn f2init in
+               let f2initc = typ_exp env f1tn f2init in
                f2n, f2initc
              else
                error (loc_exp f2init) BadFieldName) t1 fields
@@ -411,7 +399,7 @@ and dec env d e =
       t, TLetExp (name, init1, mf, e)
   | PVarDec (_, ((_, name), Some t, init)) ->
       let vart = find_type env t in
-      let init1 = nil_exp env vart init in
+      let init1 = typ_exp env vart init in
       let mf = Mutable (ref false) in
       let name, env = add_var env name vart mf in
       let t, e = exp env e in
@@ -452,7 +440,7 @@ and dec env d e =
           if seenr then () else error Location.none BadTypeCycle
         else
           match t with
-            TUnit | TInt | TString | TAny | TBool ->
+            TUnit | TInt | TString | TAny | TBool | TNil ->
               ()
           | TRecord (_, flds) ->
               List.iter (fun (_, t1) -> check true (t :: visited) t1) flds
@@ -501,7 +489,7 @@ and dec env d e =
                  None -> TUnit
                | Some t -> find_type env t
              in
-             let bodyc = nil_exp env2 rett body in
+             let bodyc = typ_exp env2 rett body in
              name', List.map (fun (x, mut) -> (x, mut)) (List.rev muts), bodyc)
           funs' funs
       in
@@ -511,8 +499,8 @@ let primitives =
   [
     "print"    , [ TString ], TUnit;
     "printi"   , [ TInt ], TUnit;
-    "flush"    , [ TUnit ], TUnit;
-    "getchar"  , [ TUnit ], TString;
+    "flush"    , [  ], TUnit;
+    "getchar"  , [  ], TString;
     "ord"      , [ TString ], TInt;
     "chr"      , [ TInt ], TString;
     "size"     , [ TString ], TInt;

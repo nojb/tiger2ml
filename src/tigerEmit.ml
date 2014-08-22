@@ -42,6 +42,8 @@ let rec emit_type =
         | Some t ->
             emit_type t
       end
+  | TNil ->
+      assert false
 
 let emit_top_types typs =
   let mkrecord fields = {
