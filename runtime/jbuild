@@ -1,0 +1,6 @@
+(jbuild_version 1)
+
+(library
+ ((name runtime)
+  (wrapped false)
+  (public_name tiger2ml.runtime)))

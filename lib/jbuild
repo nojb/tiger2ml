@@ -1,0 +1,9 @@
+(jbuild_version 1)
+
+(ocamlyacc (tigerParser))
+(ocamllex (tigerLexer))
+
+(library
+ ((name tigerlib)
+  (wrapped false)
+  (libraries (compiler-libs.common))))

@@ -1,16 +1,6 @@
 (jbuild_version 1)
 
-(ocamlyacc (tigerParser))
-(ocamllex (tigerLexer))
-
-(library
- ((name tigerlib)
-  (wrapped false)
-  (modules (tigerEmit tigerError tigerLexer tigerParser tigerSyntax tigerTyping))
-  (libraries (compiler-libs.common))))
-
 (executable
  ((name tiger2ml)
   (public_name tiger2ml)
-  (modules (tiger2ml tigerMain))
   (libraries (tigerlib))))
