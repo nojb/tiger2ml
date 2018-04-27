@@ -11,7 +11,7 @@ let parse_file ppf inputfile =
   let prg = TigerParser.program TigerLexer.token lexbuf in
   let typs, prg = TigerTyping.exp prg in
   let m = TigerEmit.emit_ocaml typs prg in
-  printf "@[%a@]@." Pprintast.structure m
+  fprintf ppf "@[%a@]@." Pprintast.structure m
 
 let usage =
   "Usage: tiger2ml <options> <file>\nOptions are:"

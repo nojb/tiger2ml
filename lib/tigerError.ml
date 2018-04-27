@@ -3,7 +3,6 @@
    Distributed under the Q Public License, version 1.0. *)
 
 open Format
-open TigerSyntax
 
 type error =
     TypeMismatch

@@ -58,7 +58,7 @@ module SMap = Map.Make (String)
 type value =
     Var of (string * typ * mutable_flag)
   | Fun of (string * typ list * typ * primitive_flag)
-            
+
 type loop_flag =
     InLoop of bool ref
   | NoLoop
@@ -128,7 +128,7 @@ let find_var env (loc, name) =
     Not_found ->
       error loc (VariableNotFound name)
 
-let rec find_record_type env (loc, name) =
+let find_record_type env (loc, name) =
   try
     match actual_type (SMap.find name env.types) with
       TRecord (_, flds) as t ->
@@ -139,7 +139,7 @@ let rec find_record_type env (loc, name) =
     Not_found ->
       error loc (TypeNotFound name)
 
-let rec find_array_type env (loc, name) =
+let find_array_type env (loc, name) =
   try
     match actual_type (SMap.find name env.types) with
       TArray t1 as t ->
@@ -183,7 +183,7 @@ let is_record_type t =
 
 let rec var env =
   function
-    PNameVar (_, (loc, name as id)) ->
+    PNameVar (_, (_, _ as id)) ->
       let name, t, mut = find_var env id in
       t, TNameVar (name, mut)
   | PIndexVar (_, v, index) ->
@@ -235,7 +235,7 @@ and bool_exp env e =
       TCallExp ("<>", [e'; TIntExp 0])
   | _ ->
       error (loc_exp e) IntExpected
-        
+
 and unit_exp env e =
   let t, e' = exp env e in
   match actual_type t with
@@ -284,7 +284,7 @@ and exp env =
       let _, e1 = exp env e1 in
       let t, e2 = exp env e2 in
       t, TSeqExp (e1, e2)
-  | PNilExp p ->
+  | PNilExp _ ->
       TNil, TNilExp
   | PBreakExp loc ->
       begin
@@ -342,8 +342,8 @@ and exp env =
       let env, has_break = enter_loop env in
       let e2 = unit_exp env e2 in
       TUnit, TWhileExp (e1, e2, !has_break)
-  | PCallExp (_, (loc, name as id), el) ->
-      let name, argt, t, pf = find_fun env id in
+  | PCallExp (_, (loc, _ as id), el) ->
+      let name, argt, t, _ = find_fun env id in
       if List.length argt <> List.length el then error loc BadArgumentCount;
       let args2 = List.map2 (typ_exp env) argt el in
       t, TCallExp (name, args2)
@@ -418,7 +418,7 @@ and dec env d e =
       let update r t = r := Some t; t in
       let saved_types = ref [] in
       let save name flds = saved_types := (name, flds) :: !saved_types in
-      let rec mktype r =
+      let mktype r =
         function
           PRecordTyp (_, (_, id), flds) ->
             let flds =
@@ -428,7 +428,7 @@ and dec env d e =
             in
             save id flds;
             update r (TRecord (id, flds))
-        | PArrayTyp (_, id, tid) ->
+        | PArrayTyp (_, _, tid) ->
             update r (TArray (find_type env tid))
         | PNameTyp (_, _, tid) ->
             update r (find_type env tid)
@@ -494,7 +494,7 @@ and dec env d e =
           funs' funs
       in
       t, TLetRecExp (funs, e)
-         
+
 let primitives =
   [
     "print"    , [ TString ], TUnit;
