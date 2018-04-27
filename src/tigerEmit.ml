@@ -4,10 +4,10 @@
 
 open TigerTyping
 
-open Ast_mapper
 open Parsetree
 open Asttypes
-  
+open Ast_helper
+
 let map_opt f =
   function
     None ->
@@ -21,19 +21,19 @@ let mkident ?(loc = Location.none) s =
 let rec emit_type =
   function
     TInt ->
-      T.constr (mkident "int") []
+      Typ.constr (mkident "int") []
   | TString ->
-      T.constr (mkident "string") []
+      Typ.constr (mkident "string") []
   | TUnit ->
-      T.constr (mkident "unit") []
+      Typ.constr (mkident "unit") []
   | TArray t ->
-      T.constr (mkident "array") [ emit_type t ]
+      Typ.constr (mkident "array") [ emit_type t ]
   | TAny ->
       assert false
   | TBool ->
-      T.constr (mkident "bool") []
+      Typ.constr (mkident "bool") []
   | TRecord (id, _) ->
-      T.constr (mkident "option") [ T.constr (mkident id) [] ]
+      Typ.constr (mkident "option") [ Typ.constr (mkident id) [] ]
   | TForward r ->
       begin
         match !r with
@@ -46,124 +46,177 @@ let rec emit_type =
       assert false
 
 let emit_top_types typs =
-  let mkrecord fields = {
+  let mkrecord (name, fields) = {
+    ptype_name = Location.mknoloc name;
     ptype_params = [];
     ptype_cstrs = [];
     ptype_kind =
       Ptype_record
-        (List.map (fun (name, t) -> Location.mknoloc name, Mutable, emit_type t, Location.none) fields);
+        (List.map (fun (name, t) -> {pld_name = Location.mknoloc name;
+                                     pld_mutable = Mutable;
+                                     pld_type = emit_type t;
+                                     pld_loc = Location.none;
+                                     pld_attributes = []}
+                  ) fields);
     ptype_private = Public;
     ptype_manifest = None;
-    ptype_variance = [];
+    ptype_attributes = [];
     ptype_loc = Location.none
   }
   in
-  let typs = List.map (fun (name, fields) -> Location.mknoloc name, mkrecord fields) typs in
-  M.type_ typs
+  let typs = List.map mkrecord typs in
+  Str.type_ Recursive typs
 
 let rec expr =
   function
     TBreakExp ->
-      E.apply_nolabs (E.lid "raise") [E.construct (mkident "TigerLib.Break") None false]
+      Exp.apply (Exp.ident (mkident "raise")) [Nolabel, Exp.construct (mkident "TigerLib.Break") None]
   | TNilExp ->
-      E.construct (mkident "None") None false
+      Exp.construct (mkident "None") None
   | TIntExp n ->
-      E.constant (Const_int n)
+      Exp.constant (Pconst_integer (string_of_int n, None))
   | TStringExp s ->
-      E.constant (Const_string s)
+      Exp.constant (Pconst_string (s, None))
   | TUnitExp ->
-      E.construct (mkident "()") None false
+      Exp.construct (mkident "()") None
   | TSeqExp (e1, e2) ->
-      E.sequence (expr e1) (expr e2)
+      Exp.sequence (expr e1) (expr e2)
   | TLetExp (id, init, mf, e) ->
       let d =
         match mf with
           Mutable m when !m ->
-            [P.var (Location.mknoloc id), E.apply_nolabs (E.lid "ref") [expr init]]
+            {pvb_pat = Pat.var (Location.mknoloc id);
+             pvb_expr = Exp.apply (Exp.ident (mkident "ref")) [Nolabel, expr init];
+             pvb_attributes = [];
+             pvb_loc = Location.none}
         | _ ->
-            [P.var (Location.mknoloc id), expr init]
+            {pvb_pat = Pat.var (Location.mknoloc id);
+             pvb_expr = expr init;
+             pvb_attributes = [];
+             pvb_loc = Location.none}
       in
-      E.let_ Nonrecursive d (expr e)
+      Exp.let_ Nonrecursive [d] (expr e)
   | TLetRecExp (funs, e) ->
       let makefun =
         function
           (id, [], e) ->
-            P.var (Location.mknoloc id),
-            E.function_ "" None [P.construct (mkident "()") None false, (expr e)]
+            {pvb_pat = Pat.var (Location.mknoloc id);
+             pvb_expr =
+               Exp.function_ [{pc_lhs = Pat.construct (mkident "()") None;
+                               pc_guard = None;
+                               pc_rhs = expr e}];
+             pvb_attributes = [];
+             pvb_loc = Location.none}
         | (id, args, e) ->
             let e =
               List.fold_right
                 (fun (a, m) e ->
-                   let e = E.function_ "" None [P.var (Location.mknoloc a), e] in
+                   let e = Exp.function_ [{pc_lhs = Pat.var (Location.mknoloc a);
+                                           pc_guard = None;
+                                           pc_rhs = e}] in
                    match m with
                      TigerTyping.Mutable m when !m ->
-                       E.let_ Nonrecursive [P.var (Location.mknoloc a), E.apply_nolabs (E.lid "ref") [E.lid a]] e
+                       Exp.let_ Nonrecursive [{pvb_pat = Pat.var (Location.mknoloc a);
+                                               pvb_expr =
+                                                 Exp.apply (Exp.ident (mkident "ref"))
+                                                   [Nolabel, Exp.ident (mkident a)];
+                                               pvb_attributes = [];
+                                               pvb_loc = Location.none}] e
                    | _ ->
                        e)
                 args (expr e) in
-            P.var (Location.mknoloc id), e
+            {pvb_pat = Pat.var (Location.mknoloc id);
+             pvb_expr = e;
+             pvb_attributes = [];
+             pvb_loc = Location.none}
       in
-      E.let_ Recursive (List.map makefun funs) (expr e)
+      Exp.let_ Recursive (List.map makefun funs) (expr e)
   | TVarExp v ->
       var v
   | TAssignExp (TNameVar (name, _), e) ->
-      E.apply_nolabs (E.lid ":=") [E.lid name; expr e]
+      Exp.apply (Exp.ident (mkident ":=")) [Nolabel, Exp.ident (mkident name); Nolabel, expr e]
   | TAssignExp (TFieldVar (v, name, line), e) ->
-      E.match_ (var v)
-        [P.construct (mkident "None") None false,
-         E.apply_nolabs (E.lid "raise")
-           [E.construct (mkident "TigerLib.Nil") (Some (E.constant (Const_int line))) false];
-         P.construct (mkident "Some") (Some (P.var (Location.mknoloc "x"))) false,
-         E.setfield (E.lid "x") (mkident name) (expr e)]
+      Exp.match_ (var v)
+        [{pc_lhs = Pat.construct (mkident "None") None;
+          pc_guard = None;
+          pc_rhs =
+            Exp.apply (Exp.ident (mkident "raise"))
+              [Nolabel, Exp.construct (mkident "TigerLib.Nil")
+                 (Some (Exp.constant (Pconst_integer (string_of_int line, None))))]};
+         {pc_lhs = Pat.construct (mkident "Some") (Some (Pat.var (Location.mknoloc "x")));
+          pc_guard = None;
+          pc_rhs = Exp.setfield (Exp.ident (mkident "x")) (mkident name) (expr e)}]
   | TAssignExp (TIndexVar (v, e', line), e) ->
-      E.apply_nolabs (E.lid "TigerLib.set") [var v; expr e'; expr e; E.constant (Const_int line)]
+      Exp.apply (Exp.ident (mkident "TigerLib.set"))
+        [Nolabel, var v;
+         Nolabel, expr e';
+         Nolabel, expr e;
+         Nolabel, Exp.constant (Pconst_integer (string_of_int line, None))]
   | TForExp (index, start, finish, body, false) ->
-      E.for_ (Location.mknoloc index) (expr start) (expr finish) Upto (expr body)
+      Exp.for_ (Pat.var (Location.mknoloc index)) (expr start) (expr finish) Upto (expr body)
   | TForExp (index, start, finish, body, true) ->
-      E.try_
-        (E.for_ (Location.mknoloc index) (expr start) (expr finish) Upto (expr body))
-        [P.construct (mkident "TigerLib.Break") None false, E.construct (mkident "()") None false]
+      Exp.try_
+        (Exp.for_ (Pat.var (Location.mknoloc index)) (expr start) (expr finish) Upto (expr body))
+        [{pc_lhs = Pat.construct (mkident "TigerLib.Break") None;
+          pc_guard = None;
+          pc_rhs = Exp.construct (mkident "()") None}]
   | TCallExp (name, []) ->
-      E.apply_nolabs (E.lid name) [E.construct (mkident "()") None false]
+      Exp.apply (Exp.ident (mkident name)) [Nolabel, Exp.construct (mkident "()") None]
   | TCallExp (name, args) ->
-      E.apply_nolabs (E.lid name) (List.map expr args)
+      Exp.apply (Exp.ident (mkident name)) (List.map (fun e -> Nolabel, expr e) args)
   | TArrayExp (size, init) ->
-      E.apply_nolabs (E.lid "Array.make") [expr size; expr init]
+      Exp.apply (Exp.ident (mkident "Array.make")) [Nolabel, expr size; Nolabel, expr init]
   | TRecordExp fields ->
       let mkfield (id, e) = mkident id, expr e in
-      E.construct (mkident "Some") (Some (E.record (List.map mkfield fields) None)) false
+      Exp.construct (mkident "Some") (Some (Exp.record (List.map mkfield fields) None))
   | TIfExp (e1, e2, e3) ->
-      E.ifthenelse (expr e1) (expr e2) (map_opt expr e3)
+      Exp.ifthenelse (expr e1) (expr e2) (map_opt expr e3)
   | TWhileExp (e1, e2, false) ->
-      E.while_ (expr e1) (expr e2)
+      Exp.while_ (expr e1) (expr e2)
   | TWhileExp (e1, e2, true) ->
-      E.try_
-        (E.while_ (expr e1) (expr e2))
-        [P.construct (mkident "TigerLib.Break") None false, E.construct (mkident "()") None false]
+      Exp.try_
+        (Exp.while_ (expr e1) (expr e2))
+        [{pc_lhs = Pat.construct (mkident "TigerLib.Break") None;
+          pc_guard = None;
+          pc_rhs = Exp.construct (mkident "()") None}]
 
 and var =
   function
     TNameVar (s, Mutable m) when !m ->
-      E.apply_nolabs (E.lid "!") [E.lid s]
+      Exp.apply (Exp.ident (mkident "!")) [Nolabel, Exp.ident (mkident s)]
   | TNameVar (s, _) ->
-      E.lid s
+      Exp.ident (mkident s)
   | TFieldVar (v, name, line) ->
-      E.match_
+      Exp.match_
         (var v)
-        [P.construct (mkident "None") None false, E.apply_nolabs (E.lid "raise")
-           [E.construct (mkident "TigerLib.Nil") (Some (E.constant (Const_int line))) false];
-         P.construct (mkident "Some") (Some (P.var (Location.mknoloc "x"))) false,
-         E.field (E.lid "x") (mkident name)]
+        [{pc_lhs = Pat.construct (mkident "None") None;
+          pc_guard = None;
+          pc_rhs =
+            Exp.apply (Exp.ident (mkident "raise"))
+              [Nolabel,
+               Exp.construct (mkident "TigerLib.Nil")
+                 (Some (Exp.constant (Pconst_integer (string_of_int line, None))))]};
+         {pc_lhs = Pat.construct (mkident "Some") (Some (Pat.var (Location.mknoloc "x")));
+          pc_guard = None;
+          pc_rhs = Exp.field (Exp.ident (mkident "x")) (mkident name)}]
   | TIndexVar (v, e, line) ->
-      E.apply_nolabs (E.lid "TigerLib.get") [var v; expr e; E.constant (Const_int line)]
+      Exp.apply (Exp.ident (mkident "TigerLib.get"))
+        [Nolabel, var v;
+         Nolabel, expr e;
+         Nolabel, Exp.constant (Pconst_integer (string_of_int line, None))]
 
 let emit_ocaml typs e =
   let typs = List.map emit_top_types typs in
   let e = expr e in
   let e1 =
-    M.value Nonrecursive
-      [P.var (Location.mknoloc "main"), E.function_ "" None [P.construct (mkident "()") None false, e]]
+    Str.value Nonrecursive
+      [{pvb_pat = Pat.var (Location.mknoloc "main");
+        pvb_expr = Exp.function_ [{pc_lhs = Pat.construct (mkident "()") None;
+                                   pc_guard = None;
+                                   pc_rhs = e}];
+        pvb_attributes = [];
+        pvb_loc = Location.none}]
   in
-  let e2 = M.eval (E.apply_nolabs (E.lid "TigerLib.run") [E.lid "main"]) in
+  let e2 = Str.eval (Exp.apply (Exp.ident (mkident "TigerLib.run")) [Nolabel, Exp.ident (mkident "main")]) in
   let m = typs @ [e1; e2] in
   m

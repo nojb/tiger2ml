@@ -1,7 +1,3 @@
 _build
-*.byte
-*.native
-*.cmo
-*.cmi
-*.cmx
+.merlin
 *.install

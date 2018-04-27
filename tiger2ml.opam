@@ -3,10 +3,6 @@ maintainer: "Nicolas Ojeda Bar <n.oje.bar@gmail.com>"
 homepage: "http://github.com/nojb/tiger2ml"
 authors: ["Nicolas Ojeda Bar <n.oje.bar@gmail.com>"]
 license: "QPL"
-ocaml-version: [= "4.01.0"]
-depends: ["ocamlfind"]
-build: 
-[
-  ["./pkg/build" "native=%{ocaml-native}%"
-                 "native-dynlink=%{ocaml-native-dynlink}%"]
-]
+ocaml-version: [= "4.06.1"]
+depends: ["jbuilder"]
+build: [["jbuilder" "build" "-p" name "-j" jobs]]

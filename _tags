@@ -1,2 +1,0 @@
-true: package(compiler-libs), package(compiler-libs.common)
-<**/*.{ml,mli}> : bin_annot
