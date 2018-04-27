@@ -1,0 +1,7 @@
+(jbuild_version 1)
+
+(rule
+ ((targets (while.tig.out))
+  (deps (while.tig))
+  (mode promote)
+  (action (with-outputs-to ${@} (run tiger2ml ${^})))))
