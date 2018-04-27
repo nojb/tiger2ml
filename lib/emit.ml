@@ -2,7 +2,7 @@
    All rights reserved.
    Distributed under the Q Public License, version 1.0. *)
 
-open TigerTyping
+open Typing
 
 open Parsetree
 open Asttypes
@@ -115,7 +115,7 @@ let rec expr =
                                            pc_guard = None;
                                            pc_rhs = e}] in
                    match m with
-                     TigerTyping.Mutable m when !m ->
+                     Typing.Mutable m when !m ->
                        Exp.let_ Nonrecursive [{pvb_pat = Pat.var (Location.mknoloc a);
                                                pvb_expr =
                                                  Exp.apply (Exp.ident (mkident "ref"))

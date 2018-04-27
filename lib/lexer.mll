@@ -3,7 +3,7 @@
    Distributed under the Q Public License, version 1.0. *)
 
 {
-open TigerParser
+open Parser
 
 let string_buf =
   Buffer.create 100
@@ -36,7 +36,7 @@ rule token = parse
   | "do"                { DO }
   | "for"               { FOR }
   | "to"                { TO }
-  | ['0'-'9']+ { INT (int_of_string (Lexing.lexeme lexbuf)) } 
+  | ['0'-'9']+ { INT (int_of_string (Lexing.lexeme lexbuf)) }
   | '+'                 { PLUS }
   | '-'                 { MINUS }
   | '*'                 { TIMES }

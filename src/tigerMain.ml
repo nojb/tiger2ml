@@ -3,14 +3,14 @@
    Distributed under the Q Public License, version 1.0. *)
 
 open Format
-open TigerError
+open Tiger
 
 let parse_file ppf inputfile =
   Location.input_name := inputfile;
   let lexbuf = Lexing.from_channel (open_in inputfile) in
-  let prg = TigerParser.program TigerLexer.token lexbuf in
-  let typs, prg = TigerTyping.exp prg in
-  let m = TigerEmit.emit_ocaml typs prg in
+  let prg = Parser.program Lexer.token lexbuf in
+  let typs, prg = Typing.exp prg in
+  let m = Emit.emit_ocaml typs prg in
   fprintf ppf "@[%a@]@." Pprintast.structure m
 
 let usage =
@@ -20,8 +20,8 @@ let main () =
   try
     Arg.parse [] (parse_file Format.err_formatter) usage
   with
-    Error (loc, err) ->
-      eprintf "%aError: %a.@." Location.print loc TigerError.report err
+    Error.Error (loc, err) ->
+      eprintf "%aError: %a.@." Location.print loc Error.report err
   | Parsing.Parse_error ->
       eprintf "Parsing error.@."
   | Failure e ->

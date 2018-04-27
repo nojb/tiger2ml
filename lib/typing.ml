@@ -2,8 +2,8 @@
    All rights reserved.
    Distributed under the Q Public License, version 1.0. *)
 
-open TigerSyntax
-open TigerError
+open Syntax
+open Error
 
 type mutable_flag =
     Immutable

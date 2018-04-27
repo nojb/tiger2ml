@@ -3,7 +3,7 @@
    Distributed under the Q Public License, version 1.0. */
 
 %{
-open TigerSyntax
+open Syntax
 
 let loc_nth i =
   { Location.loc_start = Parsing.rhs_start_pos i;
@@ -80,7 +80,7 @@ let merge_loc loc1 loc2 =
 
 %start program
 
-%type <TigerSyntax.exp> program
+%type <Syntax.exp> program
 
 %%
 
@@ -181,7 +181,7 @@ exp
   | IF exp THEN exp ELSE exp
       { PIfExp (loc (), $2, $4, Some $6) }
   | error
-      { TigerError.error (loc ()) TigerError.BadParse }
+      { Error.error (loc ()) Error.BadParse }
   ;
 
 decs

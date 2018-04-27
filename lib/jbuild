@@ -1,9 +1,8 @@
 (jbuild_version 1)
 
-(ocamlyacc (tigerParser))
-(ocamllex (tigerLexer))
+(ocamlyacc (parser))
+(ocamllex (lexer))
 
 (library
- ((name tigerlib)
-  (wrapped false)
+ ((name tiger)
   (libraries (compiler-libs.common))))

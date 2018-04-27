@@ -3,4 +3,4 @@
 (executable
  ((name tiger2ml)
   (public_name tiger2ml)
-  (libraries (tigerlib))))
+  (libraries (tiger))))
