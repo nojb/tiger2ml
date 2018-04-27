@@ -14,7 +14,7 @@ let parse_file ppf inputfile =
   fprintf ppf "@[%a@]@." Pprintast.structure m
 
 let usage =
-  "Usage: tiger2ml <options> <file>\nOptions are:"
+  Printf.sprintf "Usage: %s <options> <file>\nOptions are:" (Filename.basename Sys.executable_name)
 
 let main () =
   try

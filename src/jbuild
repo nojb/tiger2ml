@@ -1,6 +1,6 @@
 (jbuild_version 1)
 
 (executable
- ((name tiger2ml)
+ ((name main)
   (public_name tiger2ml)
   (libraries (tiger))))
